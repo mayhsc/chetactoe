@@ -1,9 +1,9 @@
 package engine
 
-type PiectType int
+type PiecType int
 
 const (
-	Empty PiectType = iota
+	Empty PiecType = iota
 	Pawn
 	Knight
 	Bishop
@@ -18,10 +18,10 @@ const (
 )
 
 type Piece struct {
-	pieceType PiectType
+	pieceType PiecType
 	player    Player
 }
 
 type Board struct {
-	pieces [4][4]PiectType
+	pieces [4][4]Piece
 }
