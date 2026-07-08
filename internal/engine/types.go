@@ -25,3 +25,4 @@ type Piece struct {
 type Board struct {
 	pieces [4][4]Piece
 }
+
