@@ -33,3 +33,7 @@ go.work.sum
 
 # Build files
 bin/
+
+build/bin
+node_modules
+frontend/dist
