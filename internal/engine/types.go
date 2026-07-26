@@ -33,7 +33,7 @@ type Board struct {
 }
 
 type Hand struct {
-	piece [4]*Piece
+	pieces [4]*Piece
 	player Player
 }
 
