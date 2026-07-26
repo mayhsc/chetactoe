@@ -12,8 +12,8 @@ const (
 type Player int
 
 const (
-	White Player = iota
-	Black
+	White Player = 1
+	Black Player = 2
 )
 
 type Position struct {
@@ -33,7 +33,7 @@ type Board struct {
 }
 
 type Hand struct {
-	pieces [4]*Piece
+	Pieces [4]*Piece
 	player Player
 }
 

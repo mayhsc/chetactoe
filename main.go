@@ -1,14 +1,15 @@
 package main
 
 import (
-	"embed"
+	// "embed"
 
 	// "github.com/wailsapp/wails/v2"
 	// "github.com/wailsapp/wails/v2/pkg/options"
 	// "github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"chetactoe/internal/engine"
 )
 
-var assets embed.FS
+// var assets embed.FS
 
 func main() {
 // 	app := NewApp()
@@ -30,4 +31,8 @@ func main() {
 // 	if err != nil {
 // 		println("Error:", err.Error())
 // 	}
+
+	gameBoard := engine.InitializeGameBoard()
+
+	gameBoard.Print()
 }
