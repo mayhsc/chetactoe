@@ -23,9 +23,8 @@ type Position struct {
 
 type Piece struct {
 	pieceType PieceType
-	position Position
-	player Player
-
+	position  Position
+	player    Player
 }
 
 type Board struct {
@@ -39,5 +38,5 @@ type Hand struct {
 
 type GameBaord struct {
 	board Board
-	hand [2]Hand
+	hand  [2]Hand
 }
