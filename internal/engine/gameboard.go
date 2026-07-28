@@ -17,12 +17,7 @@ func (gb *GameBaord) MovePiece(oldPos Position, newPos Position, p Player) {
 	toHand := c2 < 0
 
 	var piece *Piece
-	var i int
-	if p == White {
-		i = 0
-	} else {
-		i = 1
-	}
+	i := int(p)
 
 	if inHand {
 		piece = gb.hand[i].Pieces[r1]
@@ -82,12 +77,8 @@ func (gb *GameBaord) Print() {
 }
 
 func (gb *GameBaord) getLabelForPiece(pType PieceType, p Player) string {
-	var i int
-	if p == White {
-		i = 0
-	} else {
-		i = 1
-	}
+	i := int(p)
+
 	labels := [2][4]string{
 		{"♟", "♞", "♝", "♜"},
 		{"♙", "♘", "♗", "♖"},

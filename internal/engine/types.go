@@ -12,8 +12,8 @@ const (
 type Player int
 
 const (
-	White Player = 1
-	Black Player = 2
+	White Player = iota
+	Black 
 )
 
 type Position struct {
