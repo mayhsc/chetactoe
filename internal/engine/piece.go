@@ -1,21 +1,21 @@
 package engine
 
 func CreatePiece(ptype PieceType, player Player) *Piece {
-	var index int;
-	if (player == White) {
-		index = -1;
+	var index int
+	if player == White {
+		index = -1
 	} else {
-		index = -2;
+		index = -2
 	}
 
 	return &Piece{
 		pieceType: ptype,
-		player: player,
+		player:    player,
 		position: Position{
-			Col: int(index),
+			Col: index,
 			Row: int(ptype),
 		},
-	};
+	}
 }
 
 func InitializePieces(player Player) [4]*Piece {
@@ -28,4 +28,44 @@ func InitializePieces(player Player) [4]*Piece {
 	}
 
 	return pieces
+}
+
+func (pt PieceType) Moves(position Position) []Position {
+	var moves []Position
+
+	switch pt {
+	case Pawn:
+		offsets := []Position{
+			{-1, 0},
+			{0, -1},
+			{1, 0},
+			{0, 1},
+		}
+
+		addOffset(&moves, offsets, position)
+	}
+
+	return moves
+}
+
+func addOffset(moves *[]Position, offsets []Position, position Position) {
+	for _, offset := range offsets {
+		newPosition := Position{
+			Row: position.Row + offset.Row,
+			Col: position.Col + offset.Col,
+		}
+		if validPosition(newPosition) {
+			*moves = append(*moves, newPosition)
+		}
+
+	}
+}
+
+func validPosition(pos Position) bool {
+	row, col := pos.Row, pos.Col
+
+	if row > 3 || row < 0 || col > 3 || col < 0 {
+		return false
+	}
+	return true
 }
