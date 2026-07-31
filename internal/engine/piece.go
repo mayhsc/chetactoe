@@ -43,6 +43,20 @@ func (pt PieceType) Moves(position Position) []Position {
 		}
 
 		addOffset(&moves, offsets, position)
+
+	case Knight:
+		offsets := []Position{
+			{1, 2},
+			{2, 1},
+			{-1, 2},
+			{-2, 1},
+			{1, -2},
+			{2, -1},
+			{-1, -2},
+			{-2, -1},
+		}
+
+		addOffset(&moves, offsets, position)
 	}
 
 	return moves
