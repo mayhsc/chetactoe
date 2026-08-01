@@ -2,25 +2,31 @@ package main
 
 import (
 	"chetactoe/internal/engine"
+	"fmt"
 )
 
 // var assets embed.FS
 
 func main() {
-	ptype := engine.Rook
+	// ptype := engine.Rook
 
-	for i := range 4 {
-		for j := range 4 {
-			// fmt.Printf("For: {%d, %d}", i, j)
-			// for _, pos := range ptype.Moves(engine.Position{Row: i, Col: j}) {
-			// 	fmt.Printf("%d\t", pos)
-			// }
-			pos := engine.Position{Row: i, Col: j}
-			ptype.ViewMoves(pos, ptype.Moves(pos))
-			print("\n")
-		}
-		// print("\n")
-		print("\n")
+	// for i := range 4 {
+	// 	for j := range 4 {
+	// 		pos := engine.Position{Row: i, Col: j}
+	// 		ptype.ViewMoves(pos, ptype.Moves(pos))
+	// 		print("\n")
+	// 	}
+	// 	print("\n")
+	// }
+	// gameBoard := engine.InitializeGameBoard()
+	board := engine.NewBoard()
+	piece := engine.CreatePiece(
+		engine.Pawn,
+		engine.White,
+	)
 
+	pos := engine.Position{Row: 1, Col: -1}
+	for i, move := range piece.ValidMoves(pos, board) {
+		fmt.Printf("%d: (%d, %d)\n", i, move.Row, move.Col)
 	}
 }

@@ -20,6 +20,7 @@ func CreatePiece(ptype PieceType, player Player) *Piece {
 			Col: index,
 			Row: int(ptype),
 		},
+		direction: None,
 	}
 }
 
@@ -70,10 +71,10 @@ func (pt PieceType) Moves(position Position) []Position {
 
 	case Rook:
 		for i := range 4 {
-					offsets = append(offsets, Position{i, 0})
-					offsets = append(offsets, Position{-i, 0})
-					offsets = append(offsets, Position{0, -i})
-					offsets = append(offsets, Position{0, i})
+			offsets = append(offsets, Position{i, 0})
+			offsets = append(offsets, Position{-i, 0})
+			offsets = append(offsets, Position{0, -i})
+			offsets = append(offsets, Position{0, i})
 
 		}
 	}
@@ -127,4 +128,23 @@ func (pt PieceType) ViewMoves(pos Position, moves []Position) {
 
 func contains(moves []Position, pos Position) bool {
 	return slices.Contains(moves, pos)
+}
+
+func (p Piece) ValidMoves(position Position, bd Board) []Position {
+	var emptyPos []Position
+	var validMoves []Position
+
+	for i, row := range bd.pieces {
+		for j, piece := range row {
+			if piece == nil {
+				emptyPos = append(emptyPos, Position{Row: i, Col: j})
+			}
+		}
+	}
+
+	if position.Col < 0 {
+		return emptyPos
+	}
+
+	return validMoves
 }
