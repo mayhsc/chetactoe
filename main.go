@@ -7,7 +7,7 @@ import (
 // var assets embed.FS
 
 func main() {
-	ptype := engine.Knight
+	ptype := engine.Bishop
 
 	for i := range 4 {
 		for j := range 4 {

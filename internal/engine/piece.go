@@ -67,13 +67,10 @@ func (pt PieceType) Moves(position Position) []Position {
 		var offsets []Position
 
 		for i := 1; i < 4; i++ {
-			for j := 1; j < 4; j++ {
-				offsets = append(offsets, Position{i, j})
-				offsets = append(offsets, Position{-i, j})
-				offsets = append(offsets, Position{i, -j})
-				offsets = append(offsets, Position{-i, -j})
-
-			}
+			offsets = append(offsets, Position{i, i})
+			offsets = append(offsets, Position{-i, i})
+			offsets = append(offsets, Position{i, -i})
+			offsets = append(offsets, Position{-i, -i})
 		}
 
 		addOffset(&moves, offsets, position)
@@ -103,7 +100,6 @@ func validPosition(pos Position) bool {
 	}
 	return true
 }
-
 func (pt PieceType) ViewMoves(pos Position, moves []Position) {
 	for r := range 4 {
 		fmt.Printf("%d | ", r)
@@ -112,7 +108,7 @@ func (pt PieceType) ViewMoves(pos Position, moves []Position) {
 			switch {
 			case r == pos.Row && c == pos.Col:
 				fmt.Print("P ")
-			case slices.Contains(moves, pos):
+			case contains(moves, Position{Row: r, Col: c}):
 				fmt.Print("* ")
 			default:
 				fmt.Print(". ")
@@ -123,4 +119,8 @@ func (pt PieceType) ViewMoves(pos Position, moves []Position) {
 	}
 
 	fmt.Println("    0 1 2 3")
+}
+
+func contains(moves []Position, pos Position) bool {
+	return slices.Contains(moves, pos)
 }
