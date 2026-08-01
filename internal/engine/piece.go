@@ -37,20 +37,19 @@ func InitializePieces(player Player) [4]*Piece {
 
 func (pt PieceType) Moves(position Position) []Position {
 	var moves []Position
+	var offsets []Position
 
 	switch pt {
 	case Pawn:
-		offsets := []Position{
+		offsets = []Position{
 			{-1, 0},
 			{0, -1},
 			{1, 0},
 			{0, 1},
 		}
 
-		addOffset(&moves, offsets, position)
-
 	case Knight:
-		offsets := []Position{
+		offsets = []Position{
 			{1, 2},
 			{2, 1},
 			{-1, 2},
@@ -61,11 +60,7 @@ func (pt PieceType) Moves(position Position) []Position {
 			{-2, -1},
 		}
 
-		addOffset(&moves, offsets, position)
-
 	case Bishop:
-		var offsets []Position
-
 		for i := 1; i < 4; i++ {
 			offsets = append(offsets, Position{i, i})
 			offsets = append(offsets, Position{-i, i})
@@ -73,8 +68,16 @@ func (pt PieceType) Moves(position Position) []Position {
 			offsets = append(offsets, Position{-i, -i})
 		}
 
-		addOffset(&moves, offsets, position)
+	case Rook:
+		for i := range 4 {
+					offsets = append(offsets, Position{i, 0})
+					offsets = append(offsets, Position{-i, 0})
+					offsets = append(offsets, Position{0, -i})
+					offsets = append(offsets, Position{0, i})
+
+		}
 	}
+	addOffset(&moves, offsets, position)
 
 	return moves
 }
@@ -100,6 +103,7 @@ func validPosition(pos Position) bool {
 	}
 	return true
 }
+
 func (pt PieceType) ViewMoves(pos Position, moves []Position) {
 	for r := range 4 {
 		fmt.Printf("%d | ", r)

@@ -7,7 +7,7 @@ import (
 // var assets embed.FS
 
 func main() {
-	ptype := engine.Bishop
+	ptype := engine.Rook
 
 	for i := range 4 {
 		for j := range 4 {
