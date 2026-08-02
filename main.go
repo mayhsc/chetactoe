@@ -21,7 +21,7 @@ func main() {
 	// gameBoard := engine.InitializeGameBoard()
 	board := engine.NewBoard()
 	piece := engine.CreatePiece(
-		engine.Pawn,
+		engine.Rook,
 		engine.White,
 	)
 
@@ -29,4 +29,17 @@ func main() {
 	for i, move := range piece.ValidMoves(pos, board) {
 		fmt.Printf("%d: (%d, %d)\n", i, move.Row, move.Col)
 	}
+
+	println()
+	board.SetPiece(1, 1, *piece)
+	for i, move := range piece.ValidMoves(pos, board) {
+		fmt.Printf("%d: (%d, %d)\n", i, move.Row, move.Col)
+	}
+
+	println()
+	board.SetPiece(2, 1, *piece)
+	for i, move := range piece.ValidMoves(engine.Position{Row: 1, Col: 1}, board) {
+		fmt.Printf("%d: (%d, %d)\n", i, move.Row, move.Col)
+	}
+
 }

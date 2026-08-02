@@ -16,14 +16,14 @@ type Direction int
 const (
 	Up Direction = iota
 	Down
-	Lef
+	Left
 	Right
 	None
 )
 
 const (
 	White Player = iota
-	Black 
+	Black
 )
 
 type Position struct {

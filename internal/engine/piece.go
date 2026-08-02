@@ -130,7 +130,7 @@ func contains(moves []Position, pos Position) bool {
 	return slices.Contains(moves, pos)
 }
 
-func (p Piece) ValidMoves(position Position, bd Board) []Position {
+func (p Piece) ValidMoves(pos Position, bd Board) []Position {
 	var emptyPos []Position
 	var validMoves []Position
 
@@ -142,9 +142,60 @@ func (p Piece) ValidMoves(position Position, bd Board) []Position {
 		}
 	}
 
-	if position.Col < 0 {
+	if pos.Col < 0 {
 		return emptyPos
 	}
 
+	moves := p.pieceType.Moves(pos)
+
+	for _, move := range moves {
+		if contains(emptyPos, move) {
+			// validMoves = append(validMoves, move)
+		}
+	}
+	// clampMoves()
+
+	Bishop.ViewMoves(Position{1, 1}, clampMoves(Position{1, 1}, Position{2, 1}, moves))
+
 	return validMoves
+}
+
+func clampMoves(origin Position, blocker Position, moves []Position) []Position {
+	var clamped []Position
+
+	dx := blocker.Col - origin.Col
+	dy := blocker.Row - origin.Row
+
+	for _, move := range moves {
+		mx := move.Col - origin.Col
+		my := move.Row - origin.Row
+
+		sameRay := false
+
+		switch {
+		case dx == 0:
+			sameRay = mx == 0 && my*dy > 0
+		case dy == 0:
+			sameRay = my == 0 && mx*dx > 0
+		default:
+			sameRay = mx*dy == my*dx && mx*dx > 0
+		}
+
+		if sameRay {
+			if abs(mx) > abs(dx) || abs(my) > abs(dy) {
+				continue
+			}
+		}
+
+		clamped = append(clamped, move)
+	}
+
+	return clamped
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
