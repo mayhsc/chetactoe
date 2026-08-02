@@ -36,21 +36,12 @@ func InitializePieces(player Player) [4]*Piece {
 	return pieces
 }
 
-func (pt PieceType) Moves(position Position) []Position {
+func (pt PieceType) Moves(position Position, bd Board) []Position {
 	var moves []Position
-	var offsets []Position
 
 	switch pt {
-	case Pawn:
-		offsets = []Position{
-			{-1, 0},
-			{0, -1},
-			{1, 0},
-			{0, 1},
-		}
-
 	case Knight:
-		offsets = []Position{
+		offsets := []Position{
 			{1, 2},
 			{2, 1},
 			{-1, 2},
@@ -61,26 +52,55 @@ func (pt PieceType) Moves(position Position) []Position {
 			{-2, -1},
 		}
 
+		addOffset(&moves, offsets, position)
+
 	case Bishop:
-		for i := 1; i < 4; i++ {
-			offsets = append(offsets, Position{i, i})
-			offsets = append(offsets, Position{-i, i})
-			offsets = append(offsets, Position{i, -i})
-			offsets = append(offsets, Position{-i, -i})
+		directions := []Position{
+			{1, 1},
+			{-1, 1},
+			{1, -1},
+			{-1, -1},
 		}
+
+		addSlidingMoves(&moves, position, directions, bd)
 
 	case Rook:
-		for i := range 4 {
-			offsets = append(offsets, Position{i, 0})
-			offsets = append(offsets, Position{-i, 0})
-			offsets = append(offsets, Position{0, -i})
-			offsets = append(offsets, Position{0, i})
-
+		directions := []Position{
+			{1, 0},
+			{-1, 0},
+			{0, 1},
+			{0, -1},
 		}
+
+		addSlidingMoves(&moves, position, directions, bd)
 	}
-	addOffset(&moves, offsets, position)
 
 	return moves
+}
+
+func addSlidingMoves(moves *[]Position, position Position, directions []Position, bd Board) {
+	for _, dir := range directions {
+		current := position
+
+		for {
+			current = Position{
+				Row: current.Row + dir.Row,
+				Col: current.Col + dir.Col,
+			}
+
+			if !validPosition(current) {
+				break
+			}
+
+			if bd.pieces[current.Row][current.Col] == nil {
+				*moves = append(*moves, current)
+				continue
+			}
+
+			*moves = append(*moves, current)
+			break
+		}
+	}
 }
 
 func addOffset(moves *[]Position, offsets []Position, position Position) {
@@ -131,33 +151,7 @@ func contains(moves []Position, pos Position) bool {
 }
 
 func (p Piece) ValidMoves(pos Position, bd Board) []Position {
-	var emptyPos []Position
-	var validMoves []Position
-
-	for i, row := range bd.pieces {
-		for j, piece := range row {
-			if piece == nil {
-				emptyPos = append(emptyPos, Position{Row: i, Col: j})
-			}
-		}
-	}
-
-	if pos.Col < 0 {
-		return emptyPos
-	}
-
-	moves := p.pieceType.Moves(pos)
-
-	for _, move := range moves {
-		if contains(emptyPos, move) {
-			// validMoves = append(validMoves, move)
-		}
-	}
-	// clampMoves()
-
-	Bishop.ViewMoves(Position{1, 1}, clampMoves(Position{1, 1}, Position{2, 1}, moves))
-
-	return validMoves
+	return p.pieceType.Moves(pos, bd)
 }
 
 func clampMoves(origin Position, blocker Position, moves []Position) []Position {
