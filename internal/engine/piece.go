@@ -103,28 +103,6 @@ func addSlidingMoves(moves *[]Position, position Position, directions []Position
 	}
 }
 
-func addOffset(moves *[]Position, offsets []Position, position Position) {
-	for _, offset := range offsets {
-		newPosition := Position{
-			Row: position.Row + offset.Row,
-			Col: position.Col + offset.Col,
-		}
-		if validPosition(newPosition) {
-			*moves = append(*moves, newPosition)
-		}
-
-	}
-}
-
-func validPosition(pos Position) bool {
-	row, col := pos.Row, pos.Col
-
-	if row > 3 || row < 0 || col > 3 || col < 0 {
-		return false
-	}
-	return true
-}
-
 func (pt PieceType) ViewMoves(pos Position, moves []Position) {
 	for r := range 4 {
 		fmt.Printf("%d | ", r)
@@ -151,45 +129,92 @@ func contains(moves []Position, pos Position) bool {
 }
 
 func (p Piece) ValidMoves(pos Position, bd Board) []Position {
+	if p.pieceType == Pawn {
+		return p.pawnMoves(pos, bd)
+	}
+
 	return p.pieceType.Moves(pos, bd)
 }
 
-func clampMoves(origin Position, blocker Position, moves []Position) []Position {
-	var clamped []Position
+func (p Piece) pawnMoves(pos Position, bd Board) []Position {
+	var moves []Position
 
-	dx := blocker.Col - origin.Col
-	dy := blocker.Row - origin.Row
-
-	for _, move := range moves {
-		mx := move.Col - origin.Col
-		my := move.Row - origin.Row
-
-		sameRay := false
-
-		switch {
-		case dx == 0:
-			sameRay = mx == 0 && my*dy > 0
-		case dy == 0:
-			sameRay = my == 0 && mx*dx > 0
-		default:
-			sameRay = mx*dy == my*dx && mx*dx > 0
+	switch p.direction {
+	case Up:
+		next := Position{
+			Row: pos.Row + 1,
+			Col: pos.Col,
+		}
+		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
+			moves = append(moves, next)
 		}
 
-		if sameRay {
-			if abs(mx) > abs(dx) || abs(my) > abs(dy) {
-				continue
+	case Down:
+		next := Position{
+			Row: pos.Row - 1,
+			Col: pos.Col,
+		}
+		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
+			moves = append(moves, next)
+		}
+
+	case Right:
+		next := Position{
+			Row: pos.Row,
+			Col: pos.Col + 1,
+		}
+		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
+			moves = append(moves, next)
+		}
+
+	case Left:
+		next := Position{
+			Row: pos.Row,
+			Col: pos.Col - 1,
+		}
+		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
+			moves = append(moves, next)
+		}
+
+	case None:
+		offsets := []Position{
+			{Row: -1, Col: 0},
+			{Row: 0, Col: -1},
+			{Row: 1, Col: 0},
+			{Row: 0, Col: 1},
+		}
+
+		addOffset(&moves, offsets, pos)
+
+		var validMoves []Position
+		for _, move := range moves {
+			if bd.pieces[move.Row][move.Col] == nil {
+				validMoves = append(validMoves, move)
 			}
 		}
 
-		clamped = append(clamped, move)
+		return validMoves
 	}
 
-	return clamped
+	return moves
 }
 
-func abs(x int) int {
-	if x < 0 {
-		return -x
+func addOffset(moves *[]Position, offsets []Position, position Position) {
+	for _, offset := range offsets {
+		newPosition := Position{
+			Row: position.Row + offset.Row,
+			Col: position.Col + offset.Col,
+		}
+
+		if validPosition(newPosition) {
+			*moves = append(*moves, newPosition)
+		}
 	}
-	return x
+}
+
+func validPosition(pos Position) bool {
+	return pos.Row >= 0 &&
+		pos.Row < 4 &&
+		pos.Col >= 0 &&
+		pos.Col < 4
 }
