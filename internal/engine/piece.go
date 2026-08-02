@@ -38,6 +38,7 @@ func InitializePieces(player Player) [4]*Piece {
 
 func (pt PieceType) Moves(position Position, bd Board) []Position {
 	var moves []Position
+	var validMoves []Position
 
 	switch pt {
 	case Knight:
@@ -53,6 +54,12 @@ func (pt PieceType) Moves(position Position, bd Board) []Position {
 		}
 
 		addOffset(&moves, offsets, position)
+		for _, move := range moves {
+			if bd.pieces[move.Row][move.Col] == nil {
+				validMoves = append(validMoves, move)
+			}
+		}
+		return validMoves
 
 	case Bishop:
 		directions := []Position{
