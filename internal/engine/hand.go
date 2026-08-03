@@ -11,14 +11,13 @@ func InitializeHand() [2]Hand {
 	var hands [2]Hand
 
 	for i := range 2 {
-		var player Player;
-		if i == 0 {
-			player = White
-		} else {
-			player = Black
-		}
-		hands[i] = NewHand(player)
+		hands[i] = NewHand(Player(i))
 	}
 
 	return hands
+}
+
+func countPieces() int {
+
+	return 0
 }

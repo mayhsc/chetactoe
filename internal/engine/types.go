@@ -11,9 +11,19 @@ const (
 
 type Player int
 
+type Direction int
+
 const (
-	White Player = 1
-	Black Player = 2
+	Up Direction = iota
+	Down
+	Left
+	Right
+	None
+)
+
+const (
+	White Player = iota
+	Black
 )
 
 type Position struct {
@@ -25,6 +35,7 @@ type Piece struct {
 	pieceType PieceType
 	position  Position
 	player    Player
+	direction Direction
 }
 
 type Board struct {
