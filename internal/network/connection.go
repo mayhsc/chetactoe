@@ -6,11 +6,11 @@ import (
 	"time"
 )
 
-const port = 2000
+// const port = 2000
 const connectionSignal = "HELLO_CHETACTOE"
 
-func DiscoverDevices() {
-	listenAddr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", port))
+func DiscoverDevices(listen int, broadcst int) {
+	listenAddr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", listen))
 	conn, err := net.ListenUDP("udp", listenAddr)
 
 	if err != nil {
@@ -20,11 +20,11 @@ func DiscoverDevices() {
 
 	defer conn.Close()
 
-	go boradcastPresence()
+	go boradcastPresence(broadcst)
 
 	fmt.Println("Listening for other players...")
 	buf := make([]byte, 1024)
-	myIPs := getLocalIP()
+	// myIPs := getLocalIP()
 
 	for {
 		n, remoteAddr, err := conn.ReadFromUDP(buf)
@@ -33,9 +33,9 @@ func DiscoverDevices() {
 			continue
 		}
 
-		if myIPs[remoteAddr.IP.String()] {
-			continue
-		}
+		// if myIPs[remoteAddr.IP.String()] {
+		// 	continue
+		// }
 
 		message := string(buf[:n])
 
@@ -45,7 +45,7 @@ func DiscoverDevices() {
 	}
 }
 
-func boradcastPresence() {
+func boradcastPresence(port int) {
 	broadcastAddr, _ := net.ResolveUDPAddr(
 		"udp",
 		fmt.Sprintf(
@@ -87,4 +87,8 @@ func getLocalIP() map[string]bool {
 	}
 
 	return ips
+}
+
+func initiateTcpConnection(address net.IPNet) {
+	
 }
