@@ -12,8 +12,9 @@ import (
 const udpConnectionSignal = "HELLO_CHETACTOE"
 
 func DiscoverDevices(listenPort int, tcpPort int) {
-	listenAddr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", listenPort))
-	conn, err := net.ListenUDP("udp", listenAddr)
+
+	listenAddr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf("224.0.0.1:%d", listenPort))
+	conn, err := net.ListenMulticastUDP("udp", nil, listenAddr)
 
 	if err != nil {
 		fmt.Printf("Error listening: %v\n", err)
@@ -60,7 +61,7 @@ func BoradcastPresence(broadcastPort int) {
 	broadcastAddr, _ := net.ResolveUDPAddr(
 		"udp",
 		fmt.Sprintf(
-			"255.255.255.255:%d",
+			"224.0.0.1:%d",
 			broadcastPort,
 		),
 	)
