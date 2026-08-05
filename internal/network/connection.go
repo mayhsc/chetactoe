@@ -5,7 +5,17 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
+)
+
+var (
+	remoteAddrs []*net.UDPAddr
+	addrsMu     sync.Mutex
 )
 
 // const port = 2000
@@ -43,16 +53,18 @@ func DiscoverDevices(listenPort int, tcpPort int) {
 		message := string(buf[:n])
 
 		if message == udpConnectionSignal {
-			fmt.Printf("Peer discovered at IP: %s\n", remoteAddr.IP.String())
+			addrsMu.Lock()
 
-			tcpTarget := &net.TCPAddr{
-				IP:   remoteAddr.IP,
-				Port: tcpPort,
-				Zone: remoteAddr.Zone,
+			exists := slices.ContainsFunc(remoteAddrs, func(addr *net.UDPAddr) bool {
+				return addr.IP.Equal(remoteAddr.IP) && addr.Port == remoteAddr.Port
+			})
+
+			if !exists {
+				remoteAddrs = append(remoteAddrs, remoteAddr)
+				fmt.Printf("Peer discovered at IP: %s\n", remoteAddr.IP.String())
 			}
-			go establishTcpConnection(tcpTarget)
 
-			// return
+			addrsMu.Unlock()
 		}
 	}
 }
@@ -159,4 +171,73 @@ func establishTcpConnection(target *net.TCPAddr) {
 	}
 
 	defer conn.Close()
+}
+
+func StartDevicePrompt(tcpPort int) {
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		fmt.Println("\n--- Options ---")
+		fmt.Println("1. List discovered devices")
+		fmt.Println("2. Connect to a device by index")
+		fmt.Println("3. Exit menu")
+		fmt.Print("Choose an option: ")
+
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		switch input {
+		case "1":
+			addrsMu.Lock()
+			if len(remoteAddrs) == 0 {
+				fmt.Println("No devices discovered yet.")
+			} else {
+				fmt.Println("\nDiscovered Devices:")
+				for i, addr := range remoteAddrs {
+					fmt.Printf("[%d] %s\n", i, addr.IP.String())
+				}
+			}
+			addrsMu.Unlock()
+
+		case "2":
+			addrsMu.Lock()
+			if len(remoteAddrs) == 0 {
+				fmt.Println("No devices available to connect.")
+				addrsMu.Unlock()
+				continue
+			}
+
+			fmt.Println("\nDiscovered Devices:")
+			for i, addr := range remoteAddrs {
+				fmt.Printf("[%d] %s\n", i, addr.IP.String())
+			}
+			fmt.Print("Enter the index of the device to connect: ")
+
+			idxStr, _ := reader.ReadString('\n')
+			idxStr = strings.TrimSpace(idxStr)
+			idx, err := strconv.Atoi(idxStr)
+
+			if err != nil || idx < 0 || idx >= len(remoteAddrs) {
+				fmt.Println("Invalid index provided.")
+				addrsMu.Unlock()
+				continue
+			}
+
+			targetAddr := remoteAddrs[idx]
+			addrsMu.Unlock()
+
+			tcpTarget := &net.TCPAddr{
+				IP:   targetAddr.IP,
+				Port: tcpPort,
+				Zone: targetAddr.Zone,
+			}
+			go establishTcpConnection(tcpTarget)
+
+		case "3":
+			fmt.Println("Exiting prompt...")
+			return
+		default:
+			fmt.Println("Invalid option, please try again.")
+		}
+	}
 }

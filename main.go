@@ -21,6 +21,7 @@ func main() {
 		go network.StartTcpServer(tcpPort)
 		network.BoradcastPresence(udpPort)
 	} else {
-		network.DiscoverDevices(udpPort, tcpPort)
+		go network.DiscoverDevices(udpPort, tcpPort)
+		network.StartDevicePrompt(tcpPort)
 	}
 }
