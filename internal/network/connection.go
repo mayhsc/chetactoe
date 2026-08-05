@@ -1,6 +1,7 @@
 package network
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"net"
@@ -78,7 +79,6 @@ func BoradcastPresence(broadcastPort int) {
 		time.Sleep(2 * time.Second)
 	}
 
-	
 }
 
 func getLocalIP() map[string]bool {
@@ -126,6 +126,18 @@ func StartTcpServer(port int) {
 func handleClient(conn net.Conn) {
 	defer conn.Close()
 
+	scanner := bufio.NewScanner(conn)
+
+	for scanner.Scan() {
+		text := scanner.Text()
+
+		fmt.Printf("Received: %s\n", text)
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Printf("Error reading stream: %v\n", err)
+	}
+	fmt.Printf("Client disconnected: %s\n", conn.RemoteAddr().String())
 }
 
 func establishTcpConnection(target *net.TCPAddr) {
