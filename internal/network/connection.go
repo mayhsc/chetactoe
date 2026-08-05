@@ -10,7 +10,7 @@ import (
 // const port = 2000
 const udpConnectionSignal = "HELLO_CHETACTOE"
 
-func DiscoverDevices(listenPort int) {
+func DiscoverDevices(listenPort int, tcpPort int) {
 	listenAddr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", listenPort))
 	conn, err := net.ListenUDP("udp", listenAddr)
 
@@ -44,11 +44,13 @@ func DiscoverDevices(listenPort int) {
 			fmt.Printf("Peer discovered at IP: %s\n", remoteAddr.IP.String())
 
 			tcpTarget := &net.TCPAddr{
-				IP: remoteAddr.IP,
-				Port: remoteAddr.Port,
+				IP:   remoteAddr.IP,
+				Port: tcpPort,
 				Zone: remoteAddr.Zone,
 			}
 			go establishTcpConnection(tcpTarget)
+
+			// return
 		}
 	}
 }
@@ -75,6 +77,8 @@ func BoradcastPresence(broadcastPort int) {
 		_, _ = conn.Write([]byte(udpConnectionSignal))
 		time.Sleep(2 * time.Second)
 	}
+
+	
 }
 
 func getLocalIP() map[string]bool {
@@ -129,6 +133,15 @@ func establishTcpConnection(target *net.TCPAddr) {
 
 	if err != nil {
 		fmt.Println("Error connecting to server:", err)
+		return
+	}
+
+	message := "Hello from Go Client\n"
+	fmt.Printf("Sending: %s", message)
+	_, err = conn.Write([]byte(message))
+
+	if err != nil {
+		fmt.Println("Error writing to server:", err)
 		return
 	}
 
