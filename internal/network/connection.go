@@ -2,15 +2,16 @@ package network
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"time"
 )
 
 // const port = 2000
-const connectionSignal = "HELLO_CHETACTOE"
+const udpConnectionSignal = "HELLO_CHETACTOE"
 
-func DiscoverDevices(listen int, broadcst int) {
-	listenAddr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", listen))
+func DiscoverDevices(listenPort int) {
+	listenAddr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", listenPort))
 	conn, err := net.ListenUDP("udp", listenAddr)
 
 	if err != nil {
@@ -20,7 +21,7 @@ func DiscoverDevices(listen int, broadcst int) {
 
 	defer conn.Close()
 
-	go boradcastPresence(broadcst)
+	// go boradcastPresence(broadcst)
 
 	fmt.Println("Listening for other players...")
 	buf := make([]byte, 1024)
@@ -39,18 +40,25 @@ func DiscoverDevices(listen int, broadcst int) {
 
 		message := string(buf[:n])
 
-		if message == connectionSignal {
+		if message == udpConnectionSignal {
 			fmt.Printf("Peer discovered at IP: %s\n", remoteAddr.IP.String())
+
+			tcpTarget := &net.TCPAddr{
+				IP: remoteAddr.IP,
+				Port: remoteAddr.Port,
+				Zone: remoteAddr.Zone,
+			}
+			go establishTcpConnection(tcpTarget)
 		}
 	}
 }
 
-func boradcastPresence(port int) {
+func BoradcastPresence(broadcastPort int) {
 	broadcastAddr, _ := net.ResolveUDPAddr(
 		"udp",
 		fmt.Sprintf(
 			"255.255.255.255:%d",
-			port,
+			broadcastPort,
 		),
 	)
 
@@ -64,7 +72,7 @@ func boradcastPresence(port int) {
 	defer conn.Close()
 
 	for {
-		_, _ = conn.Write([]byte(connectionSignal))
+		_, _ = conn.Write([]byte(udpConnectionSignal))
 		time.Sleep(2 * time.Second)
 	}
 }
@@ -89,6 +97,40 @@ func getLocalIP() map[string]bool {
 	return ips
 }
 
-func initiateTcpConnection(address net.IPNet) {
-	
+func StartTcpServer(port int) {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+
+	if err != nil {
+		log.Fatal("Error starting TCP")
+		return
+	}
+
+	defer listener.Close()
+
+	fmt.Printf("TCP Server started on port %d\n", port)
+
+	for {
+		conn, err := listener.Accept()
+
+		if err != nil {
+			fmt.Println("Connection error: ", err)
+		}
+		go handleClient(conn)
+	}
+}
+
+func handleClient(conn net.Conn) {
+	defer conn.Close()
+
+}
+
+func establishTcpConnection(target *net.TCPAddr) {
+	conn, err := net.DialTCP("tcp", nil, target)
+
+	if err != nil {
+		fmt.Println("Error connecting to server:", err)
+		return
+	}
+
+	defer conn.Close()
 }
