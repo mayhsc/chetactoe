@@ -1,13 +1,12 @@
 package network
 
 import (
-	"bufio"
 	"fmt"
 	"log"
 	"net"
 )
 
-func StartTcpServer(port int) {
+func StartTcpServer(port int, connChan chan net.Conn) {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 
 	if err != nil {
@@ -15,38 +14,19 @@ func StartTcpServer(port int) {
 		return
 	}
 
-	defer listener.Close()
-
 	fmt.Printf("TCP Server started on port %d\n", port)
 
-	for {
-		conn, err := listener.Accept()
+	// for {
+	conn, err := listener.Accept()
 
-		if err != nil {
-			fmt.Println("Connection error: ", err)
-		}
-		go handleClient(conn)
+	if err != nil {
+		fmt.Println("Connection error: ", err)
 	}
-}
-
-func handleClient(conn net.Conn) {
-	defer conn.Close()
-
-	StartGamePrompt(conn)
-
-	scanner := bufio.NewScanner(conn)
-
-	for scanner.Scan() {
-		text := scanner.Text()
-
-		fmt.Printf("Received: %s\n", text)
-	}
-
-	if err := scanner.Err(); err != nil {
-		fmt.Printf("Error reading stream: %v\n", err)
-	}
-
+	// 	go handleClient(conn)
+	// }
 	fmt.Printf("Client disconnected: %s\n", conn.RemoteAddr().String())
+
+	connChan <- conn
 }
 
 func establishTcpConnection(target *net.TCPAddr) {
@@ -56,7 +36,6 @@ func establishTcpConnection(target *net.TCPAddr) {
 		fmt.Println("Error connecting to server:", err)
 		return
 	}
-	defer conn.Close()
 
 	message := "Hello from Go Client\n"
 	fmt.Printf("Sending: %s", message)

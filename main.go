@@ -4,6 +4,8 @@ import (
 	// "chetactoe/internal/engine"
 	"chetactoe/internal/network"
 	"flag"
+	"fmt"
+	"net"
 )
 
 // var assets embed.FS
@@ -17,11 +19,25 @@ func main() {
 	flag.BoolVar(&host, "host", false, "Run as Host (true) or Client (false)")
 	flag.Parse()
 
+	var conn net.Conn
+
 	if host {
-		go network.StartTcpServer(tcpPort)
-		network.BoradcastPresence(udpPort)
+		serverConnChan := make(chan net.Conn)
+		go network.StartTcpServer(tcpPort, serverConnChan)
+
+		go network.BoradcastPresence(udpPort)
+
+		conn = <- serverConnChan
 	} else {
 		go network.DiscoverDevices(udpPort, tcpPort)
-		network.StartDevicePrompt(tcpPort)
+		conn = network.StartDevicePrompt(tcpPort)
 	}
+
+	if (conn == nil) {
+		fmt.Println("No active connections. Exiting Program")
+		return
+	}
+
+	defer conn.Close()
+	network.StartGamePrompt(conn)
 }

@@ -11,7 +11,7 @@ import (
 
 const startSignal = "START_CHETACTOE"
 
-func StartDevicePrompt(tcpPort int) {
+func StartDevicePrompt(tcpPort int) net.Conn {
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
@@ -69,11 +69,19 @@ func StartDevicePrompt(tcpPort int) {
 				Port: tcpPort,
 				Zone: targetAddr.Zone,
 			}
-			go establishTcpConnection(tcpTarget)
+			// go establishTcpConnection(tcpTarget)
+			conn, err := net.DialTCP("tcp", nil, tcpTarget)
+			if err != nil {
+				fmt.Println("Error connecting to server:", err)
+				continue
+			}
+
+			return conn
 
 		case "3":
 			fmt.Println("Exiting prompt...")
-			return
+			return nil
+
 		default:
 			fmt.Println("Invalid option, please try again.")
 		}
