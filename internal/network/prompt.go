@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const startSignal = "START_CHETACTOE"
+
 func StartDevicePrompt(tcpPort int) {
 	reader := bufio.NewReader(os.Stdin)
 
@@ -76,4 +78,65 @@ func StartDevicePrompt(tcpPort int) {
 			fmt.Println("Invalid option, please try again.")
 		}
 	}
+}
+
+func StartGamePrompt(conn net.Conn) {
+	clearScreen()
+
+	fmt.Printf("Type 1 and press enter to ready: ")
+
+	localReadyChan := make(chan bool, 1)
+	peerReadyChan := make(chan bool, 1)
+
+	go func() {
+		reader := bufio.NewReader(os.Stdin)
+		for {
+			text, _ := reader.ReadString('\n')
+			if strings.TrimSpace(text) == "1" {
+				fmt.Fprintln(conn, startSignal)
+				localReadyChan <- true
+				return
+			}
+		}
+	}()
+
+	go func() {
+		reader := bufio.NewReader(conn)
+
+		for {
+			text, err := reader.ReadString('\n')
+
+			if err != nil {
+				return
+			}
+
+			if strings.TrimSpace(text) == startSignal {
+				peerReadyChan <- true
+				return
+			}
+		}
+	}()
+
+	ready, peerReady := false, false
+
+	for {
+		select {
+		case <-localReadyChan:
+			ready = true
+		case <-peerReadyChan:
+			peerReady = true
+		}
+
+		if ready && peerReady {
+			clearScreen()
+			fmt.Println("Chetactoe has started!")
+			return
+		}
+	}
+
+}
+
+func clearScreen() {
+	os.Stdout.WriteString("\x1b[H\x1b[2J")
+
 }
