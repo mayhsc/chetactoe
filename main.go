@@ -1,45 +1,43 @@
 package main
 
 import (
-	"chetactoe/internal/engine"
+	// "chetactoe/internal/engine"
+	"chetactoe/internal/network"
+	"flag"
 	"fmt"
+	"net"
 )
 
 // var assets embed.FS
 
 func main() {
-	// ptype := engine.Rook
+	var udpPort int
+	var host bool
+	tcpPort := 1060
 
-	// for i := range 4 {
-	// 	for j := range 4 {
-	// 		pos := engine.Position{Row: i, Col: j}
-	// 		ptype.ViewMoves(pos, ptype.Moves(pos))
-	// 		print("\n")
-	// 	}
-	// 	print("\n")
-	// }
-	// gameBoard := engine.InitializeGameBoard()
-	board := engine.NewBoard()
-	piece := engine.CreatePiece(
-		engine.Rook,
-		engine.White,
-	)
+	flag.IntVar(&udpPort, "port", 1025, "UDP discovery port")
+	flag.BoolVar(&host, "host", false, "Run as Host (true) or Client (false)")
+	flag.Parse()
 
-	pos := engine.Position{Row: 1, Col: -1}
-	for i, move := range piece.ValidMoves(pos, board) {
-		fmt.Printf("%d: (%d, %d)\n", i, move.Row, move.Col)
+	var conn net.Conn
+
+	if host {
+		serverConnChan := make(chan net.Conn)
+		go network.StartTcpServer(tcpPort, serverConnChan)
+
+		go network.BoradcastPresence(udpPort)
+
+		conn = <- serverConnChan
+	} else {
+		go network.DiscoverDevices(udpPort, tcpPort)
+		conn = network.StartDevicePrompt(tcpPort)
 	}
 
-	println()
-	board.SetPiece(1, 1, *piece)
-	for i, move := range piece.ValidMoves(pos, board) {
-		fmt.Printf("%d: (%d, %d)\n", i, move.Row, move.Col)
+	if (conn == nil) {
+		fmt.Println("No active connections. Exiting Program")
+		return
 	}
 
-	println()
-	board.SetPiece(2, 1, *piece)
-	for i, move := range piece.ValidMoves(engine.Position{Row: 1, Col: 1}, board) {
-		fmt.Printf("%d: (%d, %d)\n", i, move.Row, move.Col)
-	}
-
+	defer conn.Close()
+	network.StartGamePrompt(conn)
 }
