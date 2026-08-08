@@ -91,18 +91,28 @@ func isWinningState(bd Board, p Player) bool {
 	pieces := bd.pieces
 	leftDiagonal, rightDiagonal := true, true
 
+	matchesPlayer := func(row, col int) bool {
+		piece := pieces[row][col]
+		return piece != nil && piece.player == p
+	}
+
 	for i := range 4 {
-		if pieces[i][0].player == p && pieces[i][1].player == p && pieces[i][2].player == p && pieces[i][3].player == 0 {
+		if matchesPlayer(i, 0) && matchesPlayer(i, 1) && matchesPlayer(i, 2) && matchesPlayer(i, 3) {
 			return true
 		}
 
-		if pieces[0][i].player == p && pieces[1][i].player == p && pieces[2][i].player == p && pieces[3][i].player == 0 {
+		if matchesPlayer(0, i) && matchesPlayer(1, i) && matchesPlayer(2, i) && matchesPlayer(3, i) {
 			return true
 		}
 
-		if pieces[3-i][i].player != p {
+		if !matchesPlayer(i, i) {
 			leftDiagonal = false
 		}
+
+		if !matchesPlayer(3-i, i) {
+			rightDiagonal = false
+		}
+
 	}
 
 	return leftDiagonal || rightDiagonal
