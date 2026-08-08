@@ -36,7 +36,7 @@ func (gb *GameBaord) MovePiece(oldPos Position, newPos Position, p Player) {
 	}
 }
 
-func (gb *GameBaord) Print() {
+func (gb GameBaord) Print() {
 	fmt.Print("\n=================== 4x4 BOARD ===================\n")
 
 	fmt.Print("Black Hand: ")
@@ -76,7 +76,7 @@ func (gb *GameBaord) Print() {
 	fmt.Print("\n===============================================\n\n")
 }
 
-func (gb *GameBaord) getLabelForPiece(pType PieceType, p Player) string {
+func (gb GameBaord) getLabelForPiece(pType PieceType, p Player) string {
 	i := int(p)
 
 	labels := [2][4]string{
@@ -85,4 +85,10 @@ func (gb *GameBaord) getLabelForPiece(pType PieceType, p Player) string {
 	}
 
 	return labels[i][int(pType)]
+}
+
+func(gb GameBaord) getAllPossibleMoves(p Player) {
+	// var pieces []Piece
+
+
 }

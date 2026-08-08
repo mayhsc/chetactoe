@@ -17,18 +17,8 @@ func InitializeHand() [2]Hand {
 	return hands
 }
 
-func countPieces() int {
-
-	return 0
-}
-
-func (gb *GameBaord) GetValidPlacements(handIndex int, player Player) []Position {
-	pIndex := int(player)
+func (gb *GameBaord) GetValidPlacements() []Position {
 	var validMoves []Position
-
-	if handIndex < 0 || handIndex >= 4 || gb.hand[pIndex].Pieces[handIndex] == nil {
-		return validMoves
-	}
 
 	for r := range 4 {
 		for c := range 4 {

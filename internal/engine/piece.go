@@ -135,7 +135,9 @@ func contains(moves []Position, pos Position) bool {
 	return slices.Contains(moves, pos)
 }
 
-func (p Piece) ValidMoves(pos Position, bd Board) []Position {
+func (p Piece) ValidMoves(bd Board) []Position {
+	pos := p.position
+
 	if p.pieceType == Pawn {
 		return p.pawnMoves(pos, bd)
 	}
