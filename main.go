@@ -11,6 +11,10 @@ import (
 // var assets embed.FS
 
 func main() {
+	startConnection()
+}
+
+func startConnection() {
 	var udpPort int
 	var host bool
 	tcpPort := 1060
@@ -27,13 +31,13 @@ func main() {
 
 		go network.BoradcastPresence(udpPort)
 
-		conn = <- serverConnChan
+		conn = <-serverConnChan
 	} else {
 		go network.DiscoverDevices(udpPort, tcpPort)
 		conn = network.StartDevicePrompt(tcpPort)
 	}
 
-	if (conn == nil) {
+	if conn == nil {
 		fmt.Println("No active connections. Exiting Program")
 		return
 	}

@@ -86,3 +86,24 @@ func (gb *GameBaord) getLabelForPiece(pType PieceType, p Player) string {
 
 	return labels[i][int(pType)]
 }
+
+func isWinningState(bd Board, p Player) bool {
+	pieces := bd.pieces
+	leftDiagonal, rightDiagonal := true, true
+
+	for i := range 4 {
+		if pieces[i][0].player == p && pieces[i][1].player == p && pieces[i][2].player == p && pieces[i][3].player == 0 {
+			return true
+		}
+
+		if pieces[0][i].player == p && pieces[1][i].player == p && pieces[2][i].player == p && pieces[3][i].player == 0 {
+			return true
+		}
+
+		if pieces[3-i][i].player != p {
+			leftDiagonal = false
+		}
+	}
+
+	return leftDiagonal || rightDiagonal
+}
