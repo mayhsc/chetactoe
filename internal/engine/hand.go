@@ -21,3 +21,25 @@ func countPieces() int {
 
 	return 0
 }
+
+func (gb *GameBaord) GetValidPlacements(handIndex int, player Player) []Position {
+	pIndex := int(player)
+	var validMoves []Position
+
+	if handIndex < 0 || handIndex >= 4 || gb.hand[pIndex].Pieces[handIndex] == nil {
+		return validMoves
+	}
+
+	for r := range 4 {
+		for c := range 4 {
+			if gb.board.pieces[r][c] == nil {
+				validMoves = append(validMoves, Position{
+					Row: r,
+					Col: c, 
+				})
+			}
+		}
+	}
+
+	return validMoves
+}
