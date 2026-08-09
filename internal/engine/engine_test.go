@@ -98,3 +98,37 @@ func TestIsWinningState(t *testing.T) {
 		})
 	}
 }
+
+func TestGetAllPossibleMoves(t *testing.T) {
+	gb := InitializeGameBoard()
+
+	whiteMoves := gb.getAllPossibleMoves(White)
+	expectedWhiteInitialDrops := 4 * 16
+	if len(whiteMoves) != expectedWhiteInitialDrops {
+		t.Errorf("Expected %d initial moves for White, got %d", expectedWhiteInitialDrops, len(whiteMoves))
+	}
+
+	pawnPiece := gb.hand[0].Pieces[0]
+	gb.hand[0].Pieces[0] = nil
+	pawnPiece.position = Position{Row: 1, Col: 1}
+	pawnPiece.direction = Up
+	gb.board.pieces[1][1] = pawnPiece
+
+	whiteMovesAfterDrop := gb.getAllPossibleMoves(White)
+	expectedMoves := 45 + 1
+	if len(whiteMovesAfterDrop) != expectedMoves {
+		t.Errorf("Expected %d total moves after dropping a piece, got %d", expectedMoves, len(whiteMovesAfterDrop))
+	}
+
+	foundPawnMove := false
+	for _, m := range whiteMovesAfterDrop {
+		if m.source.Row == 1 && m.source.Col == 1 && m.destination.Row == 2 && m.destination.Col == 1 {
+			foundPawnMove = true
+			break
+		}
+	}
+
+	if !foundPawnMove {
+		t.Errorf("Expected to find the valid board move for the pawn from (1,1) to (2,1), but it was missing")
+	}
+}

@@ -87,8 +87,35 @@ func (gb GameBaord) getLabelForPiece(pType PieceType, p Player) string {
 	return labels[i][int(pType)]
 }
 
-func(gb GameBaord) getAllPossibleMoves(p Player) {
-	// var pieces []Piece
+func (gb GameBaord) getAllPossibleMoves(p Player) []Move {
+	var moves []Move
 
+	placements := gb.GetValidPlacements()
 
+	for _, piece := range gb.hand[p].Pieces {
+		if piece != nil {
+			for _, placement := range placements {
+				moves = append(moves, Move{
+					source:      piece.position,
+					destination: placement,
+				})
+			}
+		}
+	}
+
+	for _, row := range gb.board.pieces {
+		for _, piece := range row {
+			if piece != nil && piece.player == p {
+				for _, destination := range piece.ValidMoves(gb.board) {
+					moves = append(moves, Move{
+						source:      piece.position,
+						destination: destination,
+					})
+
+				}
+			}
+		}
+	}
+
+	return moves
 }

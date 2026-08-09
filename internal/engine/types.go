@@ -51,3 +51,8 @@ type GameBaord struct {
 	board Board
 	hand  [2]Hand
 }
+
+type Move struct {
+	source Position
+	destination Position
+}
