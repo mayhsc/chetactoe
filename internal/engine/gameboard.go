@@ -36,7 +36,14 @@ func (gb *GameBaord) MovePiece(oldPos Position, newPos Position, p Player) {
 	}
 }
 
-func (gb GameBaord) Print() {
+func (gb GameBaord) Print(turn Player) {
+	var player string
+	if turn == 0 {
+		player = "White"
+	} else {
+		player = "Black"
+	}
+
 	fmt.Print("\n=================== 4x4 BOARD ===================\n")
 
 	fmt.Print("Black Hand: ")
@@ -73,6 +80,8 @@ func (gb GameBaord) Print() {
 			fmt.Print("_ ")
 		}
 	}
+
+	fmt.Printf("\nTurn: %s", player)
 	fmt.Print("\n===============================================\n\n")
 }
 

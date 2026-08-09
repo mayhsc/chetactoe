@@ -2,6 +2,7 @@ package main
 
 import (
 	// "chetactoe/internal/engine"
+	"chetactoe/internal/engine"
 	"chetactoe/internal/network"
 	"flag"
 	"fmt"
@@ -11,7 +12,8 @@ import (
 // var assets embed.FS
 
 func main() {
-	startConnection()
+	// startConnection()
+	engine.StartLocalGameLoop()
 }
 
 func startConnection() {
