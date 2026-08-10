@@ -135,6 +135,10 @@ func contains(moves []Position, pos Position) bool {
 	return slices.Contains(moves, pos)
 }
 
+func (p *Piece) Type() PieceType { return p.pieceType }
+func (p *Piece) Player() Player  { return p.player }
+func (p *Piece) Pos() Position   { return p.position }
+
 func (p Piece) ValidMoves(bd Board) []Position {
 	pos := p.position
 

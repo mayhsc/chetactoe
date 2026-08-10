@@ -36,6 +36,27 @@ func (gb *GameBaord) MovePiece(oldPos Position, newPos Position, p Player) {
 	}
 }
 
+func (gb *GameBaord) HasWon(p Player) bool {
+	return gb.board.isWinningState(p)
+}
+
+func (gb *GameBaord) PieceAt(pos Position) *Piece {
+	return gb.board.pieces[pos.Row][pos.Col]
+}
+
+func (gb *GameBaord) HandPieces(p Player) [4]*Piece {
+	return gb.hand[int(p)].Pieces
+}
+
+func (gb *GameBaord) ValidMovesFor(pos Position) []Position {
+	piece := gb.board.pieces[pos.Row][pos.Col]
+	if piece == nil {
+		return nil
+	}
+
+	return piece.ValidMoves(gb.board)
+}
+
 func (gb GameBaord) Print(turn Player) {
 	var player string
 	if turn == 0 {
