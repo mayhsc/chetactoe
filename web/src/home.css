@@ -1,0 +1,905 @@
+/*
+ * Chetactoe — the landing page.
+ *
+ * The whole page is the game's board: a 4x4 CSS grid whose central 2x2 is the real
+ * 3D board, with the surrounding twelve cells carrying the editorial content. The
+ * grid is the identity, so the lines dividing it are structural — 1px, quiet, and
+ * drawn over the wood as well as over the page.
+ *
+ * Tokens mirror src/app.css so the two pages are one object. In particular --bg is
+ * pinned to what the 3D backdrop *renders to* after tone mapping, not to its input
+ * colour; unmatched, the canvas shows up as a faint rectangle inside its cell.
+ */
+
+:root {
+	--bg: #f3ece2;
+	--bg-cell: #f3ece2;
+	--bg-cell-hover: #eee6d9;
+	--ink: #33322b;
+	--ink-soft: #6d6a5e;
+	--ink-faint: #97927f;
+	--rule: #d9d2c4;
+	/* the two segments that cross the board: light, because they run over wood */
+	--rule-board: rgb(255 255 255 / 48%);
+	--accent: #7d8c5c;
+
+	/* the two solid cells */
+	--olive: #3d472b;
+	--olive-hover: #454f31;
+	--on-olive: #eee9dd;
+	--on-olive-soft: #bcbfa6;
+	--char: #202321;
+	--on-char: #ece7db;
+	--on-char-soft: #918d80;
+
+	/*
+	 * The type unit. A poster that fills the viewport cannot scale off width alone:
+	 * on a short, wide screen every cell keeps its full-size type and the rows run
+	 * out of room. Sizing against whichever axis is tighter keeps the whole page in
+	 * proportion instead. At the design's 1536x1024 both terms land near 14.5px, which
+	 * is the size the reference layout was measured at.
+	 */
+	--u: min(1vw, 1.42vh);
+
+	--pad: clamp(20px, calc(2.1 * var(--u)), 34px);
+
+	color-scheme: light;
+}
+
+[data-theme='dark'] {
+	--bg: #231e16;
+	--bg-cell: #231e16;
+	--bg-cell-hover: #2b251c;
+	--ink: #ece7db;
+	--ink-soft: #a9a294;
+	--ink-faint: #8d8676;
+	--rule: #38342c;
+	--rule-board: rgb(255 255 255 / 22%);
+	--accent: #9db072;
+
+	--olive: #414c2d;
+	--olive-hover: #4a5634;
+	--on-olive: #ece7db;
+	--on-olive-soft: #b0b498;
+	--char: #191713;
+	--on-char: #ece7db;
+	--on-char-soft: #8d8676;
+
+	color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--bg); }
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--ink);
+	font-family: 'Avenir Next', 'Futura', 'Century Gothic', ui-sans-serif, system-ui, sans-serif;
+	font-weight: 400;
+	-webkit-font-smoothing: antialiased;
+	transition: background-color .35s ease, color .35s ease;
+}
+
+/* ------------------------------------------------------------------ the grid */
+
+.page {
+	display: grid;
+	grid-template-rows: minmax(0, 1fr) auto;
+	min-height: 100vh;
+	min-height: 100dvh;
+}
+
+/*
+ * Two layouts, and the difference is whether the page has a definite height.
+ *
+ * By default the rows size to their content and the page scrolls, so nothing is ever
+ * cut off — cells carry their own hairline edges. Given enough room, the page locks
+ * to the viewport and the rows become fractions of it, which is the design proper:
+ * one board, one screen. `fr` rows need that definite height to divide anything; on a
+ * min-height page they size to content instead and the tallest cell drags the grid
+ * past the fold.
+ */
+.grid,
+.lines {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+}
+
+.grid {
+	position: relative;
+	grid-auto-rows: minmax(148px, auto);
+}
+
+.cell { border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.cell-play, .cell-early { border-color: transparent; }
+
+.lines {
+	display: none;
+	position: absolute;
+	inset: 0;
+	z-index: 3;
+	pointer-events: none;
+}
+
+@media (min-width: 1101px) and (min-height: 760px) {
+
+	.page { height: 100dvh; }
+	.grid { overflow: hidden; }
+
+	/* the reference's own row heights — 287 / 290 / 223 / 175 — as fractions */
+	.grid,
+	.lines { grid-template-rows: 1.178fr 1.19fr .915fr .718fr; }
+
+	/* one continuous set of lines over the whole grid, board included */
+	.lines { display: grid; }
+	.cell { border: 0; }
+
+}
+
+.lines i { display: block; }
+.lines .v { border-left: 1px solid var(--rule); }
+.lines .h { border-top: 1px solid var(--rule); }
+.lines .over { border-color: var(--rule-board); }
+
+.l-v2 { grid-column: 2; grid-row: 1 / -1; }
+.l-v4 { grid-column: 4; grid-row: 1 / -1; }
+.l-v3-top { grid-column: 3; grid-row: 1; }
+.l-v3-board { grid-column: 3; grid-row: 2 / 4; }
+.l-v3-bottom { grid-column: 3; grid-row: 4; }
+
+.l-h2 { grid-row: 2; grid-column: 1 / -1; }
+.l-h4 { grid-row: 4; grid-column: 1 / -1; }
+.l-h3-left { grid-row: 3; grid-column: 1; }
+.l-h3-board { grid-row: 3; grid-column: 2 / 4; }
+.l-h3-right { grid-row: 3; grid-column: 4; }
+
+/* --------------------------------------------------------------- every cell */
+
+.cell {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	padding: var(--pad);
+	background: var(--bg-cell);
+	transition: background-color .3s ease;
+}
+
+/* The top row sits its content lower than its padding alone would: the wordmark and
+   the section indices share one optical line, a third of the way down. */
+.cell-brand,
+.cell-note,
+.cell-strategy,
+.play-link { padding-top: calc(var(--pad) * 1.42); }
+
+.cell-brand { grid-area: 1 / 1; justify-content: center; }
+.cell-brand .dots { margin-top: clamp(28px, calc(4.4 * var(--u)), 62px); }
+.cell-play { grid-area: 1 / 4; }
+.cell-strategy { grid-area: 2 / 1; }
+.cell-board { grid-area: 2 / 2 / 4 / 4; }
+.cell-mark { grid-area: 3 / 4; }
+.cell-craft { grid-area: 4 / 1; }
+.cell-joinery { grid-area: 4 / 2; }
+.cell-ink { grid-area: 4 / 3; }
+.cell-early { grid-area: 4 / 4; }
+
+/* ------------------------------------------------------------------ type kit */
+
+.index {
+	font-size: clamp(10px, calc(.85 * var(--u)), 13px);
+	letter-spacing: .2em;
+	color: var(--ink-faint);
+	font-variant-numeric: tabular-nums;
+}
+
+.note-title {
+	margin: clamp(14px, calc(1.4 * var(--u)), 22px) 0 0;
+	font-size: clamp(12.5px, calc(1.15 * var(--u)), 17px);
+	font-weight: 400;
+	letter-spacing: .24em;
+	line-height: 1.6;
+}
+
+.copy {
+	margin: 0;
+	font-size: clamp(11px, calc(.92 * var(--u)), 13.5px);
+	line-height: 1.62;
+	letter-spacing: .02em;
+	color: var(--ink-soft);
+}
+
+/* the short rule under a heading — the design's punctuation mark */
+.dash {
+	display: block;
+	width: 17px;
+	height: 1px;
+	margin: clamp(10px, calc(1 * var(--u)), 15px) 0 clamp(14px, calc(1.5 * var(--u)), 22px);
+	background: var(--ink-faint);
+}
+
+.statement {
+	margin: 0;
+	font-size: clamp(15px, calc(1.75 * var(--u)), 26px);
+	font-weight: 400;
+	letter-spacing: .16em;
+	line-height: 1.44;
+}
+
+.statement-sm { font-size: clamp(12px, calc(.95 * var(--u)), 14px); letter-spacing: .2em; line-height: 1.55; }
+
+/* The bottom two rows are the shallowest, so their type and spacing come down with
+   them — the design does the same, rather than scrolling row 3 and 4 out of frame. */
+.cell-craft .note-title,
+.cell-joinery .note-title { margin-top: 0; font-size: clamp(11px, calc(.95 * var(--u)), 14px); letter-spacing: .2em; }
+.cell-craft .dash,
+.cell-joinery .dash { margin: 9px 0 13px; }
+.cell-craft .copy,
+.cell-joinery .copy { font-size: clamp(10.5px, calc(.82 * var(--u)), 12.5px); line-height: 1.5; }
+.cell-craft .statement-sm { line-height: 1.5; }
+
+/* the shallow bottom row sits its content closer to the top edge, as the design does */
+.cell-craft, .cell-joinery, .cell-ink { padding-top: calc(var(--pad) * .7); }
+
+.cell-note-04 { padding-top: var(--pad); }
+.cell-note-04 .note-title { margin-top: clamp(11px, calc(1.1 * var(--u)), 17px); }
+.cell-note-04 .dash { margin: 10px 0 15px; }
+
+.vertical {
+	margin: 0;
+	writing-mode: vertical-rl;
+	font-size: clamp(11px, calc(.9 * var(--u)), 13px);
+	letter-spacing: .22em;
+	line-height: 1;
+	color: var(--ink-soft);
+}
+
+/* dot matrices, quoting the board's grid */
+.dots {
+	display: block;
+	background-image: radial-gradient(currentColor .95px, transparent 1.05px);
+	background-position: 1px 1px;
+	color: var(--ink-faint);
+	opacity: .85;
+}
+
+.dots-brand { width: 104px; height: 44px; background-size: 20px 16px; }
+.dots-mark { width: 144px; height: 60px; background-size: 20px 16px; }
+
+.arrow {
+	width: 30px;
+	height: 12px;
+	margin-top: auto;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	transition: transform .3s ease;
+}
+
+/* --------------------------------------------------------------------- brand */
+
+.wordmark {
+	margin: 0;
+	font-size: clamp(22px, calc(2.6 * var(--u)), 40px);
+	font-weight: 400;
+	letter-spacing: .3em;
+	line-height: 1;
+}
+
+.wordmark-jp {
+	margin: clamp(10px, calc(.9 * var(--u)), 14px) 0 0;
+	font-size: clamp(11px, calc(.95 * var(--u)), 14px);
+	letter-spacing: .5em;
+	color: var(--ink-soft);
+}
+
+/* ------------------------------------------------------- 01-04 note cells */
+
+.cell-note {
+	grid-row: 1;
+	color: inherit;
+	text-decoration: none;
+}
+
+.cell-note-01 { grid-column: 2; }
+.cell-note-02 { grid-column: 3; }
+.cell-note-03 { grid-area: 2 / 4; }
+.cell-note-04 { grid-area: 3 / 1; }
+
+.cell-note:hover { background: var(--bg-cell-hover); }
+.cell-note:hover .arrow { transform: translateX(7px); }
+.cell-note:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
+
+/* ------------------------------------------------------------------ play now */
+
+.cell-play {
+	padding: 0;
+	background: var(--olive);
+	color: var(--on-olive);
+}
+
+.cell-play:hover { background: var(--olive-hover); }
+
+.play-link {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	padding: var(--pad);
+	color: inherit;
+	text-decoration: none;
+}
+
+.play-link:focus-visible { outline: 2px solid var(--on-olive); outline-offset: -6px; }
+
+.play-title {
+	margin: clamp(46px, calc(4.6 * var(--u)), 68px) 0 0;
+	font-size: clamp(17px, calc(1.9 * var(--u)), 28px);
+	font-weight: 400;
+	letter-spacing: .18em;
+	line-height: 1.24;
+}
+
+.cell-play .dash { background: var(--on-olive-soft); }
+.cell-play .copy { color: var(--on-olive-soft); }
+
+/* the copy and the button share the bottom of the cell, as in the design */
+.play-foot {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 18px;
+	margin-top: auto;
+}
+
+.disc {
+	display: grid;
+	place-items: center;
+	flex: none;
+	width: clamp(48px, calc(4.2 * var(--u)), 62px);
+	height: clamp(48px, calc(4.2 * var(--u)), 62px);
+	border: 1px solid color-mix(in oklab, var(--on-olive) 45%, transparent);
+	border-radius: 50%;
+	transition: background-color .3s ease, border-color .3s ease;
+}
+
+.disc svg {
+	width: 26px;
+	height: 12px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	transition: transform .3s ease;
+}
+
+.cell-play:hover .disc { background: color-mix(in oklab, var(--on-olive) 12%, transparent); border-color: var(--on-olive); }
+.cell-play:hover .disc svg { transform: translateX(4px); }
+
+/* the two icon buttons live over the play cell, not inside its link */
+.tools {
+	position: absolute;
+	top: clamp(14px, calc(1.4 * var(--u)), 22px);
+	right: clamp(14px, calc(1.4 * var(--u)), 22px);
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	gap: 14px;
+}
+
+.tool-divider { width: 1px; height: 20px; background: color-mix(in oklab, var(--on-olive) 35%, transparent); }
+
+.icon-btn {
+	display: grid;
+	place-items: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	background: none;
+	border: 0;
+	border-radius: 8px;
+	color: var(--on-olive);
+	cursor: pointer;
+	transition: background-color .2s ease;
+}
+
+.icon-btn:hover { background: color-mix(in oklab, var(--on-olive) 14%, transparent); }
+.icon-btn:focus-visible { outline: 2px solid var(--on-olive); outline-offset: 2px; }
+
+.icon-btn svg {
+	width: 20px;
+	height: 20px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.4;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+/* sun in light, crescent in dark — cross-faded rather than swapped */
+#theme svg .sun, #theme svg .moon { transition: opacity .3s ease; }
+#theme svg .moon { opacity: 0; }
+[data-theme='dark'] #theme svg .sun { opacity: 0; }
+[data-theme='dark'] #theme svg .moon { opacity: 1; }
+
+/* ------------------------------------------------------------------ strategy */
+
+.cell-strategy {
+	flex-direction: row;
+	align-items: center;
+	gap: clamp(16px, calc(2 * var(--u)), 34px);
+}
+
+.cell-strategy .vertical { align-self: start; margin-top: clamp(4px, calc(1 * var(--u)), 18px); }
+.cell-strategy .dash { margin-bottom: 0; }
+
+/* --------------------------------------------------------------- the board */
+
+.cell-board { padding: 0; overflow: hidden; }
+
+.canvas-host { width: 100%; height: 100%; }
+.canvas-host canvas { display: block; width: 100%; height: 100%; }
+.canvas-host.ready { cursor: pointer; }
+
+.board-fallback {
+	margin: auto;
+	max-width: 34ch;
+	padding: var(--pad);
+	font-size: 13px;
+	line-height: 1.7;
+	text-align: center;
+	color: var(--ink-soft);
+}
+
+.board-fallback code { background: var(--rule); padding: 0 .3em; border-radius: 3px; }
+
+/* ---------------------------------------------------------------- mark cell */
+
+.cell-mark { justify-content: center; }
+
+.cell-mark .dots { margin-top: auto; }
+
+.kanji {
+	position: absolute;
+	right: -.08em;
+	bottom: -.1em;
+	font-size: clamp(64px, calc(7 * var(--u)), 104px);
+	line-height: .8;
+	color: var(--ink);
+	opacity: .07;
+	user-select: none;
+}
+
+/* -------------------------------------------------------------------- craft */
+
+.cell-craft {
+	flex-direction: row;
+	align-items: flex-end;
+	justify-content: flex-end;
+	overflow: hidden;
+}
+
+/* The actual render from tools/make-icons.sh, blown up and cropped by the cell —
+   the piece in the photograph is the piece in the game. */
+.craft-piece {
+	position: absolute;
+	left: 3%;
+	bottom: -32%;
+	height: 132%;
+	width: auto;
+}
+
+[data-theme='dark'] .craft-piece { filter: brightness(1.06); }
+
+.craft-text { text-align: right; }
+.craft-text .dash { margin-left: auto; }
+
+/* ------------------------------------------------------------------ joinery */
+
+.cell-joinery {
+	flex-direction: row;
+	align-items: center;
+	gap: clamp(14px, calc(1.8 * var(--u)), 30px);
+}
+
+.joinery {
+	flex: none;
+	width: clamp(52px, calc(5 * var(--u)), 76px);
+	height: auto;
+	fill: none;
+	stroke: var(--ink-soft);
+	stroke-width: 1;
+	opacity: .55;
+}
+
+/* ---------------------------------------------------------------------- ink */
+
+.cell-ink {
+	flex-direction: row;
+	align-items: flex-end;
+	justify-content: flex-end;
+	overflow: hidden;
+}
+
+/* An ink wash, not a drawing: soft fills for the ridges, a blurred wash behind,
+   and three horizontal strokes standing in for mist. */
+.ink {
+	position: absolute;
+	left: 4%;
+	bottom: 12%;
+	width: 66%;
+	height: auto;
+	color: var(--ink);
+	filter: blur(.6px);
+}
+
+.ink path { fill: currentColor; stroke: none; }
+.ink .ridge-far { opacity: .085; }
+.ink .ridge-mid { opacity: .085; }
+.ink .ridge-near { opacity: .10; }
+
+/* ink on paper is subtractive; on a dark ground the same alpha reads far stronger */
+[data-theme='dark'] .ink path { opacity: .055; }
+
+/* The two columns come from the line break in the markup, not from wrapping against a
+   height — in vertical writing mode `height` is the inline axis, and a percentage of an
+   auto-height flex parent resolves against the page instead. */
+.cell-ink .vertical { position: relative; z-index: 1; font-size: clamp(10px, calc(.8 * var(--u)), 11.5px); }
+
+/* ------------------------------------------------------------- early access */
+
+.cell-early {
+	justify-content: center;
+	gap: clamp(16px, calc(1.7 * var(--u)), 26px);
+	background: var(--char);
+	color: var(--on-char);
+}
+
+.early-title {
+	margin: 0;
+	font-size: clamp(11px, calc(.92 * var(--u)), 13px);
+	font-weight: 400;
+	letter-spacing: .22em;
+}
+
+.signup {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 6px 4px 18px;
+	border: 1px solid color-mix(in oklab, var(--on-char) 26%, transparent);
+	border-radius: 999px;
+	transition: border-color .25s ease;
+}
+
+.signup:focus-within { border-color: var(--on-char); }
+
+.signup input {
+	flex: 1;
+	min-width: 0;
+	padding: 9px 0;
+	background: none;
+	border: 0;
+	color: var(--on-char);
+	font: inherit;
+	font-size: 13px;
+	letter-spacing: .04em;
+}
+
+.signup input::placeholder { color: var(--on-char-soft); }
+.signup input:focus { outline: none; }
+
+.signup button {
+	display: grid;
+	place-items: center;
+	flex: none;
+	width: 34px;
+	height: 34px;
+	padding: 0;
+	background: none;
+	border: 0;
+	border-radius: 50%;
+	color: var(--on-char);
+	cursor: pointer;
+	transition: background-color .2s ease;
+}
+
+.signup button:hover { background: color-mix(in oklab, var(--on-char) 14%, transparent); }
+.signup button:focus-visible { outline: 2px solid var(--on-char); outline-offset: 1px; }
+
+.signup button svg {
+	width: 24px;
+	height: 12px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.signup-note {
+	position: absolute;
+	left: 19px;
+	top: calc(100% + 9px);
+	margin: 0;
+	font-size: 11px;
+	letter-spacing: .12em;
+	color: var(--on-char-soft);
+}
+
+.signup-note.bad { color: #c58f7f; }
+
+.social {
+	display: flex;
+	gap: 18px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.social a {
+	display: grid;
+	place-items: center;
+	width: 26px;
+	height: 26px;
+	color: var(--on-char-soft);
+	transition: color .2s ease;
+}
+
+.social a:hover { color: var(--on-char); }
+.social a:focus-visible { outline: 2px solid var(--on-char); outline-offset: 2px; border-radius: 4px; }
+
+.social svg { width: 17px; height: 17px; }
+.social svg .solid { fill: currentColor; stroke: none; }
+.social svg .stroke { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+/* the two eyes are punched out in the cell's own colour, which is flat behind them */
+.social svg .knockout { fill: var(--char); stroke: none; }
+
+/* ------------------------------------------------------------------- footer */
+
+.footer {
+	display: grid;
+	grid-template-columns: 1fr auto 1fr;
+	align-items: center;
+	gap: 16px;
+	padding: clamp(14px, calc(1.5 * var(--u)), 19px) var(--pad);
+	background: var(--char);
+	color: var(--on-char-soft);
+	font-size: clamp(9.5px, calc(.78 * var(--u)), 11px);
+	letter-spacing: .18em;
+}
+
+.footer > :last-child { text-align: right; }
+
+.footer-nav { display: flex; gap: clamp(18px, calc(2.4 * var(--u)), 42px); }
+
+.footer-nav a {
+	color: inherit;
+	text-decoration: none;
+	transition: color .2s ease;
+}
+
+.footer-nav a:hover { color: var(--on-char); }
+.footer-nav a:focus-visible { outline: 2px solid var(--on-char); outline-offset: 3px; }
+
+/* -------------------------------------------------------------------- sheet */
+
+.sheet {
+	position: fixed;
+	inset: 0;
+	z-index: 10;
+	display: grid;
+	place-items: center;
+	padding: 24px;
+	background: color-mix(in oklab, var(--char) 62%, transparent);
+	backdrop-filter: blur(3px);
+	animation: fade .25s ease;
+}
+
+.sheet[hidden] { display: none; }
+
+@keyframes fade { from { opacity: 0; } }
+
+.sheet-panel {
+	position: relative;
+	width: min(540px, 100%);
+	max-height: 82vh;
+	overflow-y: auto;
+	padding: clamp(26px, calc(3 * var(--u)), 44px);
+	background: var(--bg-cell);
+	border: 1px solid var(--rule);
+	color: var(--ink);
+	animation: rise .3s ease;
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+
+.sheet-close {
+	position: absolute;
+	top: 14px;
+	right: 14px;
+	display: grid;
+	place-items: center;
+	width: 34px;
+	height: 34px;
+	padding: 0;
+	background: none;
+	border: 0;
+	border-radius: 8px;
+	color: var(--ink-soft);
+	cursor: pointer;
+	transition: background-color .2s ease, color .2s ease;
+}
+
+.sheet-close:hover { background: var(--bg-cell-hover); color: var(--ink); }
+.sheet-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sheet-close svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
+
+.sheet-body { display: grid; gap: clamp(14px, calc(1.5 * var(--u)), 20px); }
+
+.sheet-body p { margin: 0; font-size: 14px; line-height: 1.75; color: var(--ink-soft); }
+.sheet-body strong { color: var(--ink); font-weight: 500; letter-spacing: .04em; }
+
+.sheet-body ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+
+.sheet-body li {
+	display: grid;
+	grid-template-columns: 2.6ch 1fr;
+	gap: 14px;
+	font-size: 14px;
+	line-height: 1.7;
+	color: var(--ink-soft);
+}
+
+.sheet-body li span { color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+
+/* the menu is the same sheet, with the sections as a list of links */
+.sheet-menu { display: grid; }
+
+.sheet-menu a {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 15px 4px;
+	border-bottom: 1px solid var(--rule);
+	color: var(--ink);
+	text-decoration: none;
+	font-size: clamp(14px, calc(1.2 * var(--u)), 17px);
+	letter-spacing: .24em;
+	transition: padding-left .25s ease, color .2s ease;
+}
+
+.sheet-menu a:hover { padding-left: 12px; color: var(--accent); }
+.sheet-menu a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sheet-menu a em { font-style: normal; font-size: 11px; letter-spacing: .2em; color: var(--ink-faint); }
+
+.sheet-play {
+	display: inline-flex;
+	align-items: center;
+	gap: 14px;
+	margin-top: clamp(20px, calc(2.4 * var(--u)), 32px);
+	padding: 15px 24px;
+	background: var(--olive);
+	color: var(--on-olive);
+	text-decoration: none;
+	font-size: 11.5px;
+	letter-spacing: .24em;
+	transition: background-color .25s ease;
+}
+
+.sheet-play:hover { background: var(--olive-hover); }
+.sheet-play:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sheet-play svg { width: 26px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; transition: transform .3s ease; }
+.sheet-play:hover svg { transform: translateX(5px); }
+.sheet-play[hidden] { display: none; }
+
+/* ------------------------------------------------------- tablet: 2 columns */
+
+@media (max-width: 1100px) {
+
+	.grid,
+	.lines {
+		grid-template-columns: repeat(2, 1fr);
+		/* the board keeps roughly the shape it has on the desktop grid — bounded by the
+		   viewport's height so it cannot become a tall trough on a narrow tablet */
+		grid-template-rows: auto minmax(300px, min(46vh, 62vw)) auto auto auto auto auto;
+	}
+
+	.cell-brand { grid-area: 1 / 1; }
+	.cell-play { grid-area: 1 / 2; }
+	.cell-board { grid-area: 2 / 1 / 3 / 3; }
+	.cell-note-01 { grid-area: 3 / 1; }
+	.cell-note-02 { grid-area: 3 / 2; }
+	.cell-note-03 { grid-area: 4 / 1; }
+	.cell-note-04 { grid-area: 4 / 2; }
+	.cell-strategy { grid-area: 5 / 1 / 6 / 3; }
+	.cell-craft { grid-area: 6 / 1; }
+	.cell-joinery { grid-area: 6 / 2; }
+	.cell-ink { grid-area: 7 / 1; }
+	.cell-early { grid-area: 7 / 2; }
+	.cell-mark { display: none; }
+
+	/* two columns is a different arrangement, so the type stops chasing the viewport
+	   and the cells go back to sizing off their own content */
+	/* enough room that the arrow still sits clear of the copy above it */
+	.cell { padding: clamp(20px, 3vw, 30px); min-height: 190px; }
+	.cell-brand, .cell-note, .cell-strategy, .play-link { padding-top: clamp(24px, 3.6vw, 38px); }
+	.play-title { margin-top: clamp(24px, 4vw, 44px); }
+	.cell-note-04 { padding-top: clamp(24px, 3.6vw, 38px); }
+
+}
+
+/* -------------------------------------------------- mobile: one per screen */
+
+@media (max-width: 680px) {
+
+	.grid,
+	.lines {
+		grid-template-columns: 1fr;
+		grid-template-rows: none;
+		grid-auto-rows: auto;
+	}
+
+	/* Every cell drops its placement and takes an order instead. Listed one class per
+	   line and matching the tablet rules' specificity, so source order decides — a
+	   shorter reset would lose to `.cell-note-01 { grid-area: 3 / 1 }` above and the
+	   column count would come back. */
+	.cell-brand,
+	.cell-play,
+	.cell-board,
+	.cell-strategy,
+	.cell-mark,
+	.cell-note-01,
+	.cell-note-02,
+	.cell-note-03,
+	.cell-note-04,
+	.cell-craft,
+	.cell-joinery,
+	.cell-ink,
+	.cell-early { grid-area: auto; }
+
+	/* order: brand, board, play, then the four numbered sections, then the rest */
+	.cell-brand { order: 1; }
+	.cell-board { order: 2; min-height: 62vw; }
+	.cell-play { order: 3; }
+	.cell-note-01 { order: 4; }
+	.cell-note-02 { order: 5; }
+	.cell-note-03 { order: 6; }
+	.cell-note-04 { order: 7; }
+	.cell-strategy { order: 8; }
+	.cell-craft { order: 9; min-height: 210px; }
+	.cell-joinery { order: 10; }
+	.cell-ink { order: 11; min-height: 190px; }
+	.cell-early { order: 12; }
+
+	.cell-brand { min-height: 0; padding-bottom: clamp(24px, 6vw, 34px); }
+	.dots-brand { display: none; }
+	.play-title { margin-top: 0; }
+	.cell-play { padding-top: 8px; }
+	.tools { top: 12px; right: 12px; }
+
+	.craft-piece { height: 128%; bottom: -18%; left: -8%; }
+	.ink { width: 54%; }
+
+	.footer {
+		grid-template-columns: 1fr;
+		justify-items: center;
+		gap: 12px;
+		text-align: center;
+	}
+
+	.footer > :last-child { text-align: center; }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+	* { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+
+}

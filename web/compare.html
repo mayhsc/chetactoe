@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>board vs reference</title>
+		<style>
+			:root { color-scheme: light; }
+			body {
+				margin: 0; min-height: 100vh; background: #14120f; color: #e8e2d8;
+				font: 13px/1.5 ui-sans-serif, system-ui, sans-serif;
+				display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px;
+			}
+			#stage {
+				position: relative; width: 1353px; height: 1162px;
+				max-width: 100%; aspect-ratio: 1353 / 1162;
+				outline: 1px solid #3a352d;
+			}
+			#stage > * { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+			#ref { object-fit: fill; }
+			#live { mix-blend-mode: var(--blend, normal); opacity: var(--op, 0.5); }
+			#clip { overflow: hidden; width: var(--wipe, 50%); }
+			#clip iframe { width: 1353px; height: 1162px; }
+			.controls { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
+			label { display: flex; gap: 6px; align-items: center; }
+			input[type=range] { width: 200px; }
+			kbd { background: #2b2721; border-radius: 3px; padding: 1px 5px; }
+		</style>
+	</head>
+	<body>
+		<div class="controls">
+			<label>mode
+				<select id="mode">
+					<option value="fade">fade</option>
+					<option value="wipe">wipe</option>
+					<option value="difference">difference</option>
+				</select>
+			</label>
+			<label>amount <input id="amount" type="range" min="0" max="100" value="50" /></label>
+			<span>reference underneath, live render on top &mdash; hold <kbd>r</kbd> to see the reference alone</span>
+		</div>
+
+		<div id="stage">
+			<img id="ref" src="/reference/target.png" alt="reference" />
+			<div id="clip"><iframe id="live" src="/board.html?w=1353&h=1162&gui=0" title="live render"></iframe></div>
+		</div>
+
+		<script type="module">
+			const stage = document.getElementById( 'stage' );
+			const clip = document.getElementById( 'clip' );
+			const live = document.getElementById( 'live' );
+			const mode = document.getElementById( 'mode' );
+			const amount = document.getElementById( 'amount' );
+
+			function apply() {
+
+				const t = Number( amount.value ) / 100;
+
+				if ( mode.value === 'wipe' ) {
+
+					clip.style.setProperty( '--wipe', `${t * 100}%` );
+					live.style.setProperty( '--op', 1 );
+					live.style.setProperty( '--blend', 'normal' );
+
+				} else {
+
+					clip.style.setProperty( '--wipe', '100%' );
+					live.style.setProperty( '--op', mode.value === 'difference' ? 1 : t );
+					live.style.setProperty( '--blend', mode.value === 'difference' ? 'difference' : 'normal' );
+
+				}
+
+			}
+
+			mode.addEventListener( 'change', apply );
+			amount.addEventListener( 'input', apply );
+			apply();
+
+			// hold R to peek at the reference alone
+			addEventListener( 'keydown', ( e ) => {
+				if ( e.key === 'r' ) clip.style.visibility = 'hidden';
+			} );
+			addEventListener( 'keyup', ( e ) => {
+				if ( e.key === 'r' ) clip.style.visibility = 'visible';
+			} );
+
+			// keep the iframe rendering at reference resolution while the stage scales
+			new ResizeObserver( () => {
+				const s = stage.clientWidth / 1353;
+				live.style.transformOrigin = 'top left';
+				live.style.transform = `scale(${s})`;
+				live.style.width = '1353px';
+				live.style.height = '1162px';
+			} ).observe( stage );
+		</script>
+	</body>
+</html>

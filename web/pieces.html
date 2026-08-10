@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Chess pieces — WoodNodeMaterial</title>
+		<style>
+			:root { color-scheme: light; }
+			html, body { margin: 0; height: 100%; overflow: hidden; background: #f2eee7; }
+			canvas { display: block; }
+			#unsupported {
+				position: fixed; inset: 0; display: none; place-content: center;
+				font: 15px/1.6 ui-sans-serif, system-ui, sans-serif; color: #3a332b;
+				text-align: center; padding: 2rem; background: #f2eee7;
+			}
+			#unsupported.show { display: grid; }
+			#unsupported code { background: #e4ded3; padding: 0 .3em; border-radius: 3px; }
+		</style>
+	</head>
+	<body>
+		<div id="unsupported">
+			<div>
+				<strong>WebGPU is not available in this browser.</strong><br />
+				<code>WoodNodeMaterial</code> uses a WGSL function (<code>voronoi3d</code>) for the
+				wood pore structure, so it cannot run on the WebGL fallback.<br />
+				Try Chrome / Edge 113+ or Safari 26+.
+			</div>
+		</div>
+		<script type="module" src="/src/pieces-view.js"></script>
+	</body>
+</html>
