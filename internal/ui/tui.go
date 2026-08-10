@@ -7,7 +7,7 @@ import (
 
 	"chetactoe/internal/engine"
 
-	"github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -30,13 +30,13 @@ type Styles struct {
 
 func defaultStyles() Styles {
 	return Styles{
-		cell:   lipgloss.NewStyle(),
-		dest:   lipgloss.NewStyle().Background(lipgloss.Color("#1F6F2F")),
-		source: lipgloss.NewStyle().Background(lipgloss.Color("#6D2F6F")),
-		hand:   lipgloss.NewStyle(),
-		title:  lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#5FD4FF")).Padding(0, 1),
-		status: lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD166")).Bold(true),
-		help:   lipgloss.NewStyle().Foreground(lipgloss.Color("#8B9BB4")),
+		cell:   lipgloss.NewStyle().Foreground(lipgloss.Color("#E4E7EB")),
+		dest:   lipgloss.NewStyle().Background(lipgloss.Color("#1B7A6E")).Foreground(lipgloss.Color("#FFFFFF")).Bold(true),
+		source: lipgloss.NewStyle().Background(lipgloss.Color("#C77D22")).Foreground(lipgloss.Color("#0A0A0A")).Bold(true),
+		hand:   lipgloss.NewStyle().Foreground(lipgloss.Color("#B8C4D9")),
+		title:  lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF6FA0")).Padding(0, 1).Background(lipgloss.Color("#1A1B26")),
+		status: lipgloss.NewStyle().Foreground(lipgloss.Color("#F2C14E")).Bold(true),
+		help:   lipgloss.NewStyle().Foreground(lipgloss.Color("#5C6B85")).Italic(true),
 	}
 }
 
