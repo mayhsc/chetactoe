@@ -1,0 +1,14 @@
+node_modules/
+dist/
+
+# The source photographs the renders are matched against. Needed locally for
+# /compare.html and tools/analyse.mjs; see the README.
+reference/
+
+.DS_Store
+*.log
+.vite/
+.vercel/
+
+# local agent/editor config
+.claude/

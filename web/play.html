@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Chetactoe — 4×4 chess</title>
+		<script>
+			// Blocking on purpose, and before the stylesheet: the CSS default palette is
+			// the light one, so setting the theme from a module — even at import time —
+			// still starts from light and animates. Painting the right palette first
+			// avoids both the flash on load and a capture frozen between the two.
+			( function () {
+				var q = new URLSearchParams( location.search ).get( 'theme' );
+				var t = q === 'light' || q === 'dark' ? q : null;
+				if ( ! t ) { try { t = localStorage.getItem( 'chetactoe-theme' ); } catch ( e ) { /* private mode */ } }
+				document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
+			} )();
+		</script>
+		<link rel="stylesheet" href="/src/app.css" />
+	</head>
+	<body>
+		<div id="unsupported">
+			<div>
+				<strong>WebGPU is not available in this browser.</strong><br />
+				The board is shaded with <code>WoodNodeMaterial</code>, which builds its pore
+				structure from a WGSL function, so it cannot fall back to WebGL.<br />
+				Try Chrome / Edge 113+ or Safari 26+.
+			</div>
+		</div>
+
+		<div class="app" hidden>
+			<!-- decorative foliage, blurred back like the shallow depth of field in the design -->
+			<svg class="foliage" viewBox="0 0 220 320" aria-hidden="true">
+				<g fill="currentColor">
+					<path d="M18 8 C70 26 96 66 92 112 C56 108 26 74 18 8 Z" />
+					<path d="M0 96 C56 104 90 140 96 186 C56 184 20 154 0 96 Z" />
+					<path d="M8 190 C60 200 88 232 92 274 C54 272 26 244 8 190 Z" />
+					<path d="M96 112 C126 96 152 104 168 128 C142 146 114 142 96 112 Z" />
+					<path d="M98 196 C130 180 158 190 172 216 C146 232 116 226 98 196 Z" />
+					<rect x="86" y="18" width="4" height="292" rx="2" />
+				</g>
+			</svg>
+
+			<header class="topbar">
+				<a class="brand" href="/" aria-label="Chetactoe — home">
+					<span class="brand-name">CHETACTOE</span>
+					<span class="brand-sub">四目</span>
+				</a>
+				<div class="tools">
+					<button id="theme" class="icon-btn" type="button" aria-label="Toggle theme" title="Toggle theme">
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<g class="sun">
+								<circle cx="12" cy="12" r="4.2" />
+								<path d="M12 1.6v3M12 19.4v3M1.6 12h3M19.4 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M19.4 4.6l-2.1 2.1M6.7 17.3l-2.1 2.1" />
+							</g>
+							<path class="moon" d="M20.5 14.6A9 9 0 1 1 9.4 3.5a7.2 7.2 0 0 0 11.1 11.1Z" />
+						</svg>
+					</button>
+					<span class="tool-divider"></span>
+					<button id="menu" class="icon-btn" type="button" aria-label="Menu" title="Menu">
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M3 7h18M3 12h18M3 17h18" />
+						</svg>
+					</button>
+				</div>
+			</header>
+
+			<main class="stage">
+				<div class="board-area" id="board-area">
+					<div class="canvas-host" id="canvas-host"></div>
+					<!-- coordinate labels are positioned each frame from the projected
+					     cell centres, so they follow the board's perspective exactly -->
+					<div class="labels" id="labels" aria-hidden="true"></div>
+					<div class="view-controls" id="view-controls" role="group" aria-label="View controls"></div>
+				</div>
+			</main>
+
+			<aside class="panel">
+				<div class="card">
+					<h1 class="game-title">CHETACTOE</h1>
+
+					<div class="turn">
+						<p class="turn-line">
+							<span class="dot" id="turn-dot"></span><span id="turn-label">YOUR TURN</span>
+						</p>
+						<p class="turn-detail">
+							<span id="turn-side">Brown pieces</span><br />
+							Move a piece to continue.
+						</p>
+					</div>
+
+					<section class="roster">
+						<h2>YOUR PIECES</h2>
+						<div class="roster-row" id="roster-you"></div>
+					</section>
+
+					<section class="roster">
+						<h2>OPPONENT</h2>
+						<div class="roster-row" id="roster-them"></div>
+					</section>
+
+					<section class="history">
+						<h2>MOVE HISTORY</h2>
+						<ol id="history-list"></ol>
+					</section>
+
+					<button class="restart" id="restart" type="button">
+						<span>RESTART GAME</span>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M20 11.5a8 8 0 1 1-2.6-5.4" />
+							<path d="M20 4v5h-5" />
+						</svg>
+					</button>
+				</div>
+			</aside>
+		</div>
+
+		<script type="module" src="/src/app.js"></script>
+	</body>
+</html>

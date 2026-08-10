@@ -1,0 +1,389 @@
+/*
+ * Chetactoe — game shell around the 3D board.
+ *
+ * Everything is driven off the tokens below. The dark theme is a real second
+ * palette rather than an inversion: the board is lit wood on a warm ground, and
+ * dropping it onto black reads as a different object, so the dark theme keeps a
+ * warm charcoal and lifts the 3D backdrop with it.
+ */
+
+:root {
+	/* Matched to what the 3D backdrop actually renders to, not to its input colour:
+	   the canvas goes through tone mapping and the page does not, and a three-level
+	   mismatch shows up as a visible rectangle where the canvas meets the page. */
+	--bg: #f3ece2;
+	--bg-panel: #f3ece2;
+	--ink: #33322b;
+	--ink-soft: #6d6a5e;
+	--ink-faint: #97927f;
+	--rule: #d9d2c4;
+	--accent: #7d8c5c;
+	--accent-soft: #c8c3ad;
+	--btn-border: #ddd5c6;
+	--foliage: #9aa87e;
+	--card: #f7f2ea;
+	--card-border: #e8e1d4;
+	--coord: #a8946f;
+	--shadow: 0 24px 60px -28px rgb(60 52 34 / 28%);
+
+	--panel-w: clamp(320px, 30vw, 456px);
+	--gutter: clamp(24px, 3.2vw, 56px);
+
+	color-scheme: light;
+}
+
+[data-theme='dark'] {
+	/* as with the light palette, matched to the rendered backdrop rather than its
+	   input colour, so the canvas edge does not show */
+	--bg: #231e16;
+	--bg-panel: #231e16;
+	--ink: #ece7db;
+	--ink-soft: #a9a294;
+	--ink-faint: #8d8676;
+	--rule: #38342c;
+	--accent: #9db072;
+	--accent-soft: #4a4538;
+	--btn-border: #443f34;
+	--foliage: #4c5a3a;
+	--card: #292319;
+	--card-border: #3a342a;
+	--coord: #9c8a67;
+	--shadow: 0 24px 60px -28px rgb(0 0 0 / 60%);
+
+	color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+	margin: 0;
+	height: 100%;
+	background: var(--bg);
+	color: var(--ink);
+	font-family: 'Avenir Next', 'Futura', 'Century Gothic', ui-sans-serif, system-ui, sans-serif;
+	-webkit-font-smoothing: antialiased;
+	transition: background-color .35s ease, color .35s ease;
+}
+
+#unsupported {
+	position: fixed; inset: 0; display: none; place-content: center;
+	padding: 2rem; text-align: center; font-size: 15px; line-height: 1.7;
+}
+#unsupported.show { display: grid; }
+#unsupported code { background: var(--rule); padding: 0 .3em; border-radius: 3px; }
+
+/* ---------------------------------------------------------------- layout */
+
+.app {
+	display: grid;
+	grid-template-columns: 1fr var(--panel-w);
+	grid-template-rows: auto minmax(0, 1fr);
+	grid-template-areas:
+		'topbar topbar'
+		'stage  panel';
+	height: 100%;
+	padding: clamp(20px, 2.4vw, 34px) var(--gutter) clamp(20px, 2.4vw, 34px);
+	gap: 0;
+	position: relative;
+	overflow: hidden;
+}
+
+.app[hidden] { display: none; }
+
+/* -------------------------------------------------------------- foliage */
+
+.foliage {
+	position: absolute;
+	top: -3%;
+	left: -5%;
+	width: clamp(150px, 15vw, 250px);
+	color: var(--foliage);
+	opacity: .5;
+	filter: blur(7px);
+	pointer-events: none;
+	transform: rotate(-8deg);
+}
+
+/* --------------------------------------------------------------- topbar */
+
+.topbar {
+	grid-area: topbar;
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	padding-bottom: clamp(16px, 1.8vw, 24px);
+	border-bottom: 1px solid var(--rule);
+	position: relative;
+	z-index: 2;
+}
+
+.brand {
+	display: block;
+	color: inherit;
+	text-decoration: none;
+}
+.brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; border-radius: 3px; }
+.brand:hover .brand-sub { color: var(--ink); }
+
+.brand-name {
+	display: block;
+	font-size: clamp(19px, 1.6vw, 25px);
+	letter-spacing: .34em;
+	font-weight: 500;
+}
+
+.brand-sub {
+	display: block;
+	margin-top: 6px;
+	font-size: clamp(10px, .85vw, 13px);
+	letter-spacing: .3em;
+	color: var(--ink-soft);
+}
+
+.tools { display: flex; align-items: center; gap: 18px; }
+
+.tool-divider { width: 1px; height: 22px; background: var(--rule); }
+
+.icon-btn {
+	display: grid; place-items: center;
+	width: 34px; height: 34px; padding: 0;
+	background: none; border: 0; border-radius: 8px;
+	color: var(--ink); cursor: pointer;
+	transition: background-color .2s ease, color .2s ease;
+}
+.icon-btn:hover { background: color-mix(in oklab, var(--ink) 8%, transparent); }
+.icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.icon-btn svg {
+	width: 21px; height: 21px;
+	fill: none; stroke: currentColor; stroke-width: 1.5;
+	stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* sun in light, crescent in dark — cross-faded rather than swapped */
+#theme svg .sun, #theme svg .moon { transition: opacity .3s ease; }
+#theme svg .moon { opacity: 0; }
+[data-theme='dark'] #theme svg .sun { opacity: 0; }
+[data-theme='dark'] #theme svg .moon { opacity: 1; }
+
+/* ---------------------------------------------------------------- stage */
+
+.stage {
+	grid-area: stage;
+	display: grid;
+	place-items: center;
+	min-height: 0;
+	position: relative;
+	z-index: 1;
+}
+
+.board-area {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	/* room for the rank and file labels outside the board itself */
+	padding: 30px 10px 10px 40px;
+}
+
+.canvas-host { width: 100%; height: 100%; }
+.canvas-host canvas { display: block; width: 100%; height: 100%; }
+
+.labels { position: absolute; inset: 0; pointer-events: none; }
+
+.labels span {
+	position: absolute;
+	transform: translate(-50%, -50%);
+	font-size: clamp(12px, 1vw, 15px);
+	letter-spacing: .16em;
+	color: var(--coord);
+	transition: opacity .3s ease;
+}
+
+/* ------------------------------------------------------- view controls */
+
+.view-controls {
+	position: absolute;
+	left: 44px;
+	bottom: 6px;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 5px 7px;
+	border: 1px solid var(--card-border);
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--card) 82%, transparent);
+	backdrop-filter: blur(6px);
+	transition: border-color .25s ease, background-color .25s ease;
+}
+
+.view-controls.locked { border-color: color-mix(in oklab, var(--accent) 45%, var(--card-border)); }
+
+.view-sep { width: 1px; height: 17px; margin: 0 3px; background: var(--rule); }
+
+.view-btn {
+	display: grid; place-items: center;
+	width: 30px; height: 30px; padding: 0;
+	background: none; border: 0; border-radius: 50%;
+	color: var(--ink-faint); cursor: pointer;
+	transition: color .2s ease, background-color .2s ease, opacity .2s ease;
+}
+
+.view-btn svg {
+	width: 17px; height: 17px;
+	fill: none; stroke: currentColor; stroke-width: 1.5;
+	stroke-linecap: round; stroke-linejoin: round;
+}
+
+.view-btn:hover:not(:disabled) { background: color-mix(in oklab, var(--ink) 8%, transparent); color: var(--ink); }
+.view-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* an enabled axis reads in full ink; a disabled one stays faint */
+.view-btn.on { color: var(--ink); }
+.view-btn[data-axis='lock'].on { color: var(--accent); }
+
+.view-btn:disabled { cursor: default; opacity: .35; }
+
+/* the padlock springs open when the view is unlocked */
+.view-btn[data-axis='lock'] .shackle {
+	transform-origin: 12px 10.4px;
+	transition: transform .25s ease;
+	transform: translateX(2.6px) rotate(14deg);
+}
+.view-btn[data-axis='lock'].on .shackle { transform: none; }
+
+/* ---------------------------------------------------------------- panel */
+
+.panel {
+	grid-area: panel;
+	display: flex;
+	min-height: 0;
+	padding: clamp(18px, 2vw, 28px) 0 0 clamp(18px, 2vw, 28px);
+	border-left: 1px solid var(--rule);
+}
+
+.card {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: clamp(18px, 1.9vw, 28px);
+	min-height: 0;
+	padding: clamp(24px, 2.4vw, 36px);
+	background: var(--card);
+	border: 1px solid var(--card-border);
+	border-radius: 10px;
+	overflow-y: auto;
+	scrollbar-width: thin;
+	transition: background-color .35s ease, border-color .35s ease;
+}
+
+.game-title {
+	margin: 0;
+	font-size: clamp(20px, 1.8vw, 29px);
+	font-weight: 400;
+	letter-spacing: .2em;
+}
+
+.turn {
+	margin: -14px 0 0;
+	padding-bottom: clamp(16px, 1.8vw, 26px);
+	border-bottom: 1px solid var(--card-border);
+}
+
+.turn-line {
+	display: flex; align-items: center; gap: 11px;
+	margin: 0;
+	font-size: clamp(13px, 1.05vw, 16px);
+	letter-spacing: .14em;
+	color: var(--accent);
+}
+
+.turn-detail {
+	margin: 12px 0 0;
+	font-size: 13px;
+	line-height: 1.65;
+	color: var(--ink-soft);
+}
+
+.dot {
+	width: 9px; height: 9px; border-radius: 50%;
+	background: var(--accent);
+	flex: none;
+}
+.dot.them { background: var(--accent-soft); }
+
+.roster h2, .history h2 {
+	margin: 0 0 14px;
+	font-size: 11px; font-weight: 500; letter-spacing: .22em;
+	color: var(--ink-soft);
+}
+
+.roster { padding-bottom: clamp(16px, 1.8vw, 26px); border-bottom: 1px solid var(--card-border); }
+
+.roster-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; }
+
+.roster-row img {
+	height: clamp(46px, 4.4vw, 68px);
+	width: auto;
+	display: block;
+}
+
+/* -------------------------------------------------------------- history */
+
+.history ol { margin: 0; padding: 0; list-style: none; display: grid; gap: clamp(13px, 1.3vw, 19px); }
+
+.history li {
+	display: grid;
+	grid-template-columns: 3ch 28px 1fr;
+	align-items: center;
+	gap: 16px;
+	font-size: 13px;
+	letter-spacing: .1em;
+	color: var(--ink);
+}
+
+.history .no { color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.history img { height: 25px; width: auto; justify-self: center; display: block; }
+.history .move { color: var(--ink); }
+.history .move .arrow { color: var(--ink-faint); margin: 0 .5em; }
+
+/* -------------------------------------------------------------- restart */
+
+.restart {
+	margin-top: auto;
+	display: flex; align-items: center; justify-content: center; gap: 14px;
+	padding: 17px 20px;
+	background: none;
+	border: 1px solid var(--btn-border);
+	border-radius: 4px;
+	color: var(--ink);
+	font: inherit; font-size: 12px; letter-spacing: .22em;
+	cursor: pointer;
+	transition: background-color .2s ease, border-color .2s ease;
+}
+.restart:hover { background: color-mix(in oklab, var(--ink) 6%, transparent); border-color: var(--ink-soft); }
+.restart:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.restart svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* --------------------------------------------------------------- narrow */
+
+@media (max-width: 900px) {
+
+	.app {
+		grid-template-columns: 1fr;
+		grid-template-areas: 'topbar' 'stage' 'panel';
+		grid-template-rows: auto minmax(320px, 52vh) auto;
+		height: auto;
+		min-height: 100%;
+		overflow: visible;
+		gap: 26px 0;
+	}
+
+	.panel { padding: 0; border-left: 0; }
+	.view-controls { left: 40px; bottom: 0; }
+	.card { overflow: visible; }
+	/* space-between spreads four icons across a full-width card down here */
+	.roster-row { justify-content: flex-start; gap: clamp(18px, 6vw, 40px); }
+	.restart { margin-top: 8px; }
+	.foliage { display: none; }
+
+}

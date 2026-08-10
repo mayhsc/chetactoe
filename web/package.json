@@ -1,0 +1,35 @@
+{
+  "name": "chetactoe",
+  "version": "1.0.0",
+  "description": "A 4x4 chess/tic-tac-toe hybrid, rendered in WebGPU with procedurally shaded wooden pieces.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "keywords": [
+    "chess",
+    "webgpu",
+    "three.js",
+    "tsl",
+    "procedural",
+    "board-game"
+  ],
+  "author": "saliltimalsina",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mayhsc/chetactoe.git",
+    "directory": "web"
+  },
+  "type": "module",
+  "dependencies": {
+    "lil-gui": "^0.21.0",
+    "three": "^0.185.1",
+    "three-bvh-csg": "^0.0.18"
+  },
+  "devDependencies": {
+    "vite": "^8.2.1"
+  },
+  "private": true
+}

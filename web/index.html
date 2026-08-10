@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Chetactoe — 四目</title>
+		<meta name="description" content="Chetactoe is a 4x4 strategy board game of turned wooden pieces. Simple to learn, hard to master." />
+		<script>
+			// Blocking on purpose, and before the stylesheet — same reason as the game
+			// shell: the CSS default palette is the light one, so setting the theme from a
+			// module still starts from light and animates across.
+			( function () {
+				var q = new URLSearchParams( location.search ).get( 'theme' );
+				var t = q === 'light' || q === 'dark' ? q : null;
+				if ( ! t ) { try { t = localStorage.getItem( 'chetactoe-theme' ); } catch ( e ) { /* private mode */ } }
+				document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
+			} )();
+		</script>
+		<link rel="stylesheet" href="/src/home.css" />
+	</head>
+	<body>
+		<div class="page">
+			<div class="grid">
+
+				<!-- ------------------------------------------------------------ brand -->
+
+				<div class="cell cell-brand">
+					<div>
+						<h1 class="wordmark">CHETACTOE</h1>
+						<p class="wordmark-jp">四 目</p>
+					</div>
+					<span class="dots dots-brand" aria-hidden="true"></span>
+				</div>
+
+				<!-- ------------------------------------------------------- 01 the board -->
+
+				<a class="cell cell-note cell-note-01" href="#board" data-sheet="board">
+					<span class="index">01</span>
+					<h2 class="note-title">THE BOARD</h2>
+					<span class="dash"></span>
+					<p class="copy">A 4×4 arena.<br />Simple to learn,<br />hard to master.</p>
+					<svg class="arrow" viewBox="0 0 30 12" aria-hidden="true">
+						<path d="M0 6h27M22 1.5 27.5 6 22 10.5" />
+					</svg>
+				</a>
+
+				<!-- ------------------------------------------------------ 02 the pieces -->
+
+				<a class="cell cell-note cell-note-02" href="#pieces" data-sheet="pieces">
+					<span class="index">02</span>
+					<h2 class="note-title">THE PIECES</h2>
+					<span class="dash"></span>
+					<p class="copy">Each piece has<br />a role. Every move<br />has weight.</p>
+					<svg class="arrow" viewBox="0 0 30 12" aria-hidden="true">
+						<path d="M0 6h27M22 1.5 27.5 6 22 10.5" />
+					</svg>
+				</a>
+
+				<!-- --------------------------------------------------------- play now -->
+
+				<div class="cell cell-play">
+					<div class="tools">
+						<button id="theme" class="icon-btn" type="button" aria-label="Toggle theme" title="Toggle theme">
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<g class="sun">
+									<circle cx="12" cy="12" r="4.2" />
+									<path d="M12 1.6v3M12 19.4v3M1.6 12h3M19.4 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M19.4 4.6l-2.1 2.1M6.7 17.3l-2.1 2.1" />
+								</g>
+								<path class="moon" d="M20.5 14.6A9 9 0 1 1 9.4 3.5a7.2 7.2 0 0 0 11.1 11.1Z" />
+							</svg>
+						</button>
+						<span class="tool-divider"></span>
+						<button id="menu" class="icon-btn" type="button" aria-label="Menu" aria-expanded="false" title="Menu">
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<path d="M3 7h18M3 12h18M3 17h18" />
+							</svg>
+						</button>
+					</div>
+
+					<a class="play-link" href="/play.html">
+						<h2 class="play-title">PLAY<br />NOW</h2>
+						<span class="dash"></span>
+						<div class="play-foot">
+							<p class="copy">Jump into the game<br />and make your move.</p>
+							<span class="disc" aria-hidden="true">
+								<svg viewBox="0 0 30 12">
+									<path d="M0 6h27M22 1.5 27.5 6 22 10.5" />
+								</svg>
+							</span>
+						</div>
+					</a>
+				</div>
+
+				<!-- ---------------------------------------------------------- strategy -->
+
+				<div class="cell cell-strategy">
+					<p class="vertical" lang="ja">戦略は静かに生れる。</p>
+					<div>
+						<h2 class="statement">STRATEGY<br />IN SILENCE.</h2>
+						<span class="dash"></span>
+					</div>
+				</div>
+
+				<!-- ------------------------------------------------------- the board 3D -->
+
+				<div class="cell cell-board">
+					<div class="canvas-host" id="canvas-host"></div>
+					<p class="board-fallback" id="board-fallback" hidden>
+						<strong>WebGPU is not available in this browser.</strong><br />
+						The board is shaded with <code>WoodNodeMaterial</code>, which builds its pore
+						structure from a WGSL function, so it cannot fall back to WebGL.<br />
+						Try Chrome / Edge 113+ or Safari 26+.
+					</p>
+				</div>
+
+				<!-- ------------------------------------------------------- 03 the rules -->
+
+				<a class="cell cell-note cell-note-03" href="#rules" data-sheet="rules">
+					<span class="index">03</span>
+					<h2 class="note-title">THE RULES</h2>
+					<span class="dash"></span>
+					<p class="copy">Clean rules.<br />Deep decisions.<br />Infinite games.</p>
+					<svg class="arrow" viewBox="0 0 30 12" aria-hidden="true">
+						<path d="M0 6h27M22 1.5 27.5 6 22 10.5" />
+					</svg>
+				</a>
+
+				<!-- -------------------------------------------------------- 04 the game -->
+
+				<a class="cell cell-note cell-note-04" href="#game" data-sheet="game">
+					<span class="index">04</span>
+					<h2 class="note-title">THE GAME</h2>
+					<span class="dash"></span>
+					<p class="copy">Think ahead.<br />Read the board.<br />Control the flow.</p>
+					<svg class="arrow" viewBox="0 0 30 12" aria-hidden="true">
+						<path d="M0 6h27M22 1.5 27.5 6 22 10.5" />
+					</svg>
+				</a>
+
+				<!-- -------------------------------------------------------------- mark -->
+
+				<div class="cell cell-mark" aria-hidden="true">
+					<span class="dots dots-mark"></span>
+					<span class="kanji">組</span>
+				</div>
+
+				<!-- ------------------------------------------------------------- craft -->
+
+				<div class="cell cell-craft">
+					<img class="craft-piece" src="/icons/craft-knight.png" alt="The knight, turned and carved from dark stock" />
+					<div class="craft-text">
+						<h2 class="statement statement-sm">CRAFTED<br />WITH<br />INTENT.</h2>
+						<span class="dash"></span>
+						<p class="copy">Built for focus.<br />Made to last.</p>
+					</div>
+				</div>
+
+				<!-- ----------------------------------------------------------- joinery -->
+
+				<div class="cell cell-joinery">
+					<!-- Four interlocking blocks in isometric, hidden edges removed: a face is
+					     drawn only where no neighbouring block covers it. A drafting diagram
+					     rather than a picture, and generated rather than eyeballed. -->
+					<svg class="joinery" viewBox="0 0 90.06 91" aria-hidden="true">
+						<path d="M67.55 39L90.06 52M67.55 65L90.06 52M67.55 65L45.03 52M67.55 39L45.03 52M90.06 78L67.55 91M67.55 91L67.55 65M90.06 52L90.06 78M45.03 78L67.55 91M45.03 52L45.03 78M22.51 39L45.03 52M22.51 65L45.03 52M22.51 65L0 52M0 52L22.51 39M45.03 78L22.51 91M22.51 91L22.51 65M0 78L22.51 91M0 52L0 78M45.03 0L67.55 13M45.03 26L67.55 13M45.03 26L22.51 13M22.51 13L45.03 0M45.03 52L45.03 26M67.55 13L67.55 39M22.51 13L22.51 39" />
+					</svg>
+					<div>
+						<h2 class="note-title">INSPIRED BY<br />JAPANESE JOINERY</h2>
+						<span class="dash"></span>
+						<p class="copy">Balance. Precision.<br />Harmony.</p>
+					</div>
+				</div>
+
+				<!-- --------------------------------------------------------------- ink -->
+
+				<div class="cell cell-ink">
+					<!-- An ink wash rather than a diagram: three ridges of falling opacity, drawn
+					     with curves and softened, so it sits behind the type instead of on it. -->
+					<svg class="ink" viewBox="0 0 300 120" aria-hidden="true">
+						<path class="ridge-far" d="M0 120C34 108 58 78 88 40c8-10 16-11 24-2 14 16 24 28 34 32 6 2 12-1 18-8 10-11 19-11 28 1 20 26 48 46 108 57z" />
+						<path class="ridge-mid" d="M22 120c26-9 46-31 70-58 7-8 14-9 21-1 12 14 21 24 30 28 6 2 11-1 16-7 4-5 9-5 13 1 14 20 30 30 52 37z" />
+						<path class="ridge-near" d="M150 120c20-8 38-25 54-44 6-7 12-7 18 0 9 11 16 18 22 21 4 2 8 0 12-4 4-4 8-4 11 1 8 12 17 20 33 26z" />
+					</svg>
+					<p class="vertical" lang="ja">一手一手、<br />心を整える。</p>
+				</div>
+
+				<!-- ------------------------------------------------------ early access -->
+
+				<div class="cell cell-early">
+					<h2 class="early-title">JOIN THE EARLY ACCESS</h2>
+					<form class="signup" id="signup" novalidate>
+						<input id="email" type="email" name="email" placeholder="Your email" autocomplete="email" aria-label="Your email" required />
+						<button type="submit" aria-label="Sign up">
+							<svg viewBox="0 0 30 12" aria-hidden="true">
+								<path d="M0 6h27M22 1.5 27.5 6 22 10.5" />
+							</svg>
+						</button>
+						<p class="signup-note" id="signup-note" role="status"></p>
+					</form>
+					<ul class="social">
+						<li>
+							<a href="#" aria-label="Chetactoe on X">
+								<svg viewBox="0 0 24 24" aria-hidden="true">
+									<path d="M3 3h4.6l5 6.7L18.4 3H21l-7.1 8.2L21.6 21H17l-5.2-7L5.2 21H2.6l7.5-8.6z" class="solid" />
+								</svg>
+							</a>
+						</li>
+						<li>
+							<a href="#" aria-label="Chetactoe on Discord">
+								<svg viewBox="0 0 24 24" aria-hidden="true">
+									<path class="solid" d="M7.6 5.6a13 13 0 0 1 8.8 0c2.6 2.8 3.9 6.5 3.6 10.5a14 14 0 0 1-4.4 2.2l-1-1.7a10 10 0 0 0 1.6-.9 11.6 11.6 0 0 1-8.4 0c.5.4 1 .7 1.6.9l-1 1.7A14 14 0 0 1 4 16.1c-.3-4 1-7.7 3.6-10.5Z" />
+									<circle class="knockout" cx="9.4" cy="12.2" r="1.5" />
+									<circle class="knockout" cx="14.6" cy="12.2" r="1.5" />
+								</svg>
+							</a>
+						</li>
+						<li>
+							<a href="#" aria-label="Chetactoe on Instagram">
+								<svg viewBox="0 0 24 24" aria-hidden="true">
+									<rect x="3.4" y="3.4" width="17.2" height="17.2" rx="5" class="stroke" />
+									<circle cx="12" cy="12" r="4.1" class="stroke" />
+									<circle cx="17.1" cy="6.9" r="1.15" class="solid" />
+								</svg>
+							</a>
+						</li>
+					</ul>
+				</div>
+
+				<!-- Grid lines, drawn over everything. Segment by segment rather than as four
+				     long rules, so the two that cross the wood can be lighter than the ones
+				     crossing the page — and the geometry still comes from the grid itself. -->
+				<div class="lines" aria-hidden="true">
+					<i class="v l-v2"></i>
+					<i class="v l-v3-top"></i>
+					<i class="v l-v3-board over"></i>
+					<i class="v l-v3-bottom"></i>
+					<i class="v l-v4"></i>
+					<i class="h l-h2"></i>
+					<i class="h l-h3-left"></i>
+					<i class="h l-h3-board over"></i>
+					<i class="h l-h3-right"></i>
+					<i class="h l-h4"></i>
+				</div>
+
+			</div>
+
+			<footer class="footer">
+				<span>© CHETACTOE 2026</span>
+				<nav class="footer-nav">
+					<a href="#privacy">PRIVACY</a>
+					<a href="#terms">TERMS</a>
+				</nav>
+				<span>MADE BY CRAFT. PLAYED WITH MIND.</span>
+			</footer>
+		</div>
+
+		<!-- One sheet, its content swapped per section. Four near-identical panels would
+		     be four things to keep in step. -->
+		<div class="sheet" id="sheet" hidden>
+			<div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+				<button class="sheet-close" id="sheet-close" type="button" aria-label="Close">
+					<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+				</button>
+				<span class="index" id="sheet-index"></span>
+				<h2 class="note-title" id="sheet-title"></h2>
+				<span class="dash"></span>
+				<div class="sheet-body" id="sheet-body"></div>
+				<a class="sheet-play" href="/play.html">
+					<span>PLAY NOW</span>
+					<svg viewBox="0 0 30 12" aria-hidden="true"><path d="M0 6h27M22 1.5 27.5 6 22 10.5" /></svg>
+				</a>
+			</div>
+		</div>
+
+		<script type="module" src="/src/home.js"></script>
+	</body>
+</html>
