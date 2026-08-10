@@ -12,3 +12,5 @@ reference/
 
 # local agent/editor config
 .claude/
+.vercel
+.env*
