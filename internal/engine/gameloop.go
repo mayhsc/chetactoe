@@ -71,10 +71,16 @@ func StartGame(act <-chan Action, snapshot chan<- GameSnapshot) {
 			}
 
 		case Select:
-			piece := gb.pieceAt(source)
-			if piece != nil && piece.Player() == player {
-				validMoves = piece.ValidMoves(gb.board)
+			if source.Col < 0 {
+				validMoves = gb.getValidPlacements()
+			} else {
+				piece := gb.pieceAt(source)
+				if piece != nil && piece.Player() == player {
+					validMoves = piece.ValidMoves(gb.board)
+				}
+
 			}
+
 		case Cancel:
 		}
 
