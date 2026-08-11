@@ -57,7 +57,7 @@ func StartGame(act <-chan Action, snapshot chan<- GameSnapshot) {
 	}
 
 	for action := range act {
-		source, destination := action.Move.source, action.Move.destination
+		source, destination := action.Move.Source, action.Move.Destination
 		var validMoves []Position
 		var isWinningState bool
 

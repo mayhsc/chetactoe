@@ -53,8 +53,8 @@ type GameBaord struct {
 }
 
 type Move struct {
-	source      Position
-	destination Position
+	Source      Position
+	Destination Position
 }
 
 type GameSnapshot struct {

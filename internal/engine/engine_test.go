@@ -122,7 +122,7 @@ func TestGetAllPossibleMoves(t *testing.T) {
 
 	foundPawnMove := false
 	for _, m := range whiteMovesAfterDrop {
-		if m.source.Row == 1 && m.source.Col == 1 && m.destination.Row == 2 && m.destination.Col == 1 {
+		if m.Source.Row == 1 && m.Source.Col == 1 && m.Destination.Row == 2 && m.Destination.Col == 1 {
 			foundPawnMove = true
 			break
 		}

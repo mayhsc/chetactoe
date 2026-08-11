@@ -41,19 +41,24 @@ func defaultStyles() Styles {
 }
 
 type Model struct {
-	move <-chan engine.Action
-	snapshot chan<- engine.GameSnapshot
+	move     chan<- engine.Action       // Channel to send actions to engine
+	snapshot <-chan engine.GameSnapshot // Channel to receive state snapshots
 
-	turn     engine.Player
-	mode     Mode
-	cursor   engine.Position
-	handSel  int
-	selected *engine.Position
-	moves    []engine.Position
-	done     bool
-	winner   string
-	status   string
-	styles   Styles
+	snapshotState engine.GameSnapshot // Current state snapshot from engine
+
+	// TUI-only navigation
+	mode    Mode
+	cursor  engine.Position
+	handSel int
+	styles  Styles
+}
+
+type SnapshotMsg engine.GameSnapshot
+
+func waitForSnapshot(snapshot <-chan engine.GameSnapshot) tea.Cmd {
+	return func() tea.Msg {
+		return SnapshotMsg(<-snapshot)
+	}
 }
 
 func Run() {
@@ -64,31 +69,34 @@ func Run() {
 }
 
 func New() Model {
-	// gb := engine.InitializeGameBoard()
-	move := make(chan engine.Action)
-	snapshot := make(chan engine.GameSnapshot)
+	move := make(chan engine.Action, 10)
+	snapshot := make(chan engine.GameSnapshot, 10)
 
 	go engine.StartGame(move, snapshot)
-	initSnapshot := <- snapshot
+	initSnapshot := <-snapshot
 
 	return Model{
-		move: move,
-		snapshot: snapshot,
-		turn:   engine.White,
-		cursor: engine.Position{},
-		styles: defaultStyles(),
-		status: "Select one of your pieces, or press t for your hand.",
+		move:          move,
+		snapshot:      snapshot,
+		snapshotState: initSnapshot,
+		cursor:        engine.Position{},
+		styles:        defaultStyles(),
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return waitForSnapshot(m.snapshot)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+
+	case SnapshotMsg:
+		m.snapshotState = engine.GameSnapshot(msg)
+		return m, waitForSnapshot(m.snapshot)
+
 	case tea.KeyMsg:
-		if m.done {
+		if m.snapshotState.IsOver {
 			return m.updateDone(msg)
 		}
 		return m.updatePlaying(msg)
@@ -102,8 +110,8 @@ func (m Model) updateDone(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "r":
-		m = New()
-		return m, nil
+		m = New() // Re-instantiate game model on restart
+		return m, m.Init()
 	}
 
 	return m, nil
@@ -143,7 +151,7 @@ func (m Model) updatePlaying(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "t", "tab":
-		if m.selected == nil {
+		if m.snapshotState.Source == nil {
 			m.toggleHandMode()
 		}
 
@@ -151,19 +159,23 @@ func (m Model) updatePlaying(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleConfirm()
 
 	case "esc":
-		if m.selected != nil {
-			m.selected = nil
-			m.moves = nil
-			m.status = "Selection cancelled."
+		if m.snapshotState.Source != nil {
+			m.move <- engine.Action{ActionType: engine.Cancel}
 		} else if m.mode == ModeHand {
 			m.mode = ModeBoard
-			m.status = "Select one of your pieces, or press t for your hand."
 		}
 
 	case "1", "2", "3", "4":
-		if m.selected == nil {
+		if m.snapshotState.Source == nil {
 			idx := int(msg.String()[0] - '1')
-			m.selectHandPiece(idx)
+			m.handSel = idx
+			m.move <- engine.Action{
+				ActionType: engine.Select,
+				Move: engine.Move{
+					Source: engine.Position{Row: idx, Col: -1}, // Col -1 represents hand slot
+				},
+			}
+			m.mode = ModeBoard
 		}
 	}
 
@@ -173,94 +185,43 @@ func (m Model) updatePlaying(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) toggleHandMode() {
 	if m.mode == ModeBoard {
 		m.mode = ModeHand
-		m.status = fmt.Sprintf("Pick a piece from your hand (slot %d).", m.handSel)
 	} else {
 		m.mode = ModeBoard
-		m.status = "Select one of your pieces, or press t for your hand."
 	}
 }
 
 func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
+	// 1. If a piece is currently selected, execute move to cursor position
+	if m.snapshotState.Source != nil {
+		m.move <- engine.Action{
+			ActionType: engine.Execute,
+			Move: engine.Move{
+				Source:      *m.snapshotState.Source,
+				Destination: m.cursor,
+			},
+		}
+		return m, nil
+	}
+
+	// 2. Otherwise, select piece from hand or board
 	if m.mode == ModeHand {
-		m.selectHandPiece(m.handSel)
-		return m, nil
-	}
-
-	if m.selected == nil {
-		piece := m.game.PieceAt(m.cursor)
-		if piece == nil {
-			m.status = "Empty square. Select one of your pieces, or press t for your hand."
-			return m, nil
+		m.move <- engine.Action{
+			ActionType: engine.Select,
+			Move: engine.Move{
+				Source: engine.Position{Row: m.handSel, Col: -1},
+			},
 		}
-		if piece.Player() != m.turn {
-			m.status = fmt.Sprintf("That is %s's piece.", playerName(piece.Player()))
-			return m, nil
-		}
-
-		moves := m.game.ValidMovesFor(m.cursor)
-		if len(moves) == 0 {
-			m.status = "That piece has no valid moves."
-			return m, nil
-		}
-
-		pos := m.cursor
-		m.selected = &pos
-		m.moves = moves
-		m.status = "Choose a highlighted square to move."
-		return m, nil
-	}
-
-	if !slices.Contains(m.moves, m.cursor) {
-		m.status = "Not a valid destination."
-		return m, nil
-	}
-
-	src := *m.selected
-	m.game.MovePiece(src, m.cursor, m.turn)
-
-	if m.game.HasWon(m.turn) {
-		m.done = true
-		m.winner = playerName(m.turn)
-		m.selected = nil
-		m.moves = nil
-		m.status = ""
-		return m, nil
-	}
-
-	m.switchTurn()
-	m.selected = nil
-	m.moves = nil
-	m.status = "Select one of your pieces, or press t for your hand."
-	return m, nil
-}
-
-func (m *Model) selectHandPiece(idx int) {
-	piece := m.game.HandPieces(m.turn)[idx]
-	if piece == nil {
-		m.status = "That hand slot is empty."
-		return
-	}
-
-	placements := m.game.GetValidPlacements()
-	if len(placements) == 0 {
-		m.status = "The board is full. No placements available."
-		return
-	}
-
-	src := engine.Position{Row: idx, Col: -1}
-	m.selected = &src
-	m.moves = placements
-	m.mode = ModeBoard
-	m.cursor = placements[0]
-	m.status = "Choose a highlighted square to place your piece."
-}
-
-func (m *Model) switchTurn() {
-	if m.turn == engine.White {
-		m.turn = engine.Black
+		m.mode = ModeBoard // Switch navigation back to board to pick destination
 	} else {
-		m.turn = engine.White
+		m.move <- engine.Action{
+			ActionType: engine.Select,
+			Move: engine.Move{
+				Source: m.cursor,
+			},
+		}
 	}
+
+	return m, nil
 }
 
 func (m Model) View() string {
@@ -269,10 +230,10 @@ func (m Model) View() string {
 	b.WriteString(m.styles.title.Render("CHETACTOE"))
 	b.WriteString("\n\n")
 
-	if m.done {
-		b.WriteString(m.styles.title.Render(m.winner + " WINS!"))
+	if m.snapshotState.IsOver {
+		b.WriteString(m.styles.title.Render(playerName(m.snapshotState.Winner) + " WINS!"))
 	} else {
-		b.WriteString(fmt.Sprintf("Turn: %s", playerName(m.turn)))
+		b.WriteString(fmt.Sprintf("Turn: %s", playerName(m.snapshotState.CurrentPlayer)))
 	}
 	b.WriteString("\n\n")
 
@@ -284,14 +245,33 @@ func (m Model) View() string {
 	b.WriteString(m.renderHand(engine.White))
 	b.WriteString("\n\n")
 
-	if m.status != "" {
-		b.WriteString(m.styles.status.Render("▸ " + m.status))
+	if m.currentStatus() != "" {
+		b.WriteString(m.styles.status.Render("▸ " + m.currentStatus()))
 		b.WriteString("\n\n")
 	}
 
 	b.WriteString(m.renderHelp())
 
 	return b.String()
+}
+
+func (m Model) currentStatus() string {
+	if m.snapshotState.IsOver {
+		return fmt.Sprintf("Game over! %s won.", playerName(m.snapshotState.Winner))
+	}
+
+	if m.snapshotState.Source != nil {
+		if len(m.snapshotState.ValidMoves) == 0 {
+			return "That piece has no valid moves. Press Esc to cancel."
+		}
+		return "Select a highlighted square to execute move, or press Esc to cancel."
+	}
+
+	if m.mode == ModeHand {
+		return fmt.Sprintf("Hand slot %d selected. Press Enter to pick piece, or 't' for board.", m.handSel+1)
+	}
+
+	return fmt.Sprintf("Turn: %s. Select a piece or press 't' for hand.", playerName(m.snapshotState.CurrentPlayer))
 }
 
 func (m Model) renderBoard() string {
@@ -323,15 +303,15 @@ func (m Model) renderCell(r, c int) string {
 	pos := engine.Position{Row: r, Col: c}
 
 	content := "·"
-	if p := m.game.PieceAt(pos); p != nil {
+	if p := m.snapshotState.Board[r][c]; p != nil {
 		content = glyphFor(p)
 	}
 
 	st := m.styles.cell
 	switch {
-	case slices.Contains(m.moves, pos):
+	case slices.Contains(m.snapshotState.ValidMoves, pos):
 		st = m.styles.dest
-	case m.selected != nil && *m.selected == pos:
+	case m.snapshotState.Source != nil && *m.snapshotState.Source == pos:
 		st = m.styles.source
 	}
 
@@ -343,7 +323,12 @@ func (m Model) renderCell(r, c int) string {
 }
 
 func (m Model) renderHand(p engine.Player) string {
-	pieces := m.game.HandPieces(p)
+	var pieces [4]*engine.Piece
+	if p == engine.White {
+		pieces = m.snapshotState.WhiteHand
+	} else {
+		pieces = m.snapshotState.BlackHand
+	}
 
 	var slots []string
 	for i := range 4 {
@@ -353,7 +338,7 @@ func (m Model) renderHand(p engine.Player) string {
 		}
 
 		st := m.styles.hand.Width(3).Align(lipgloss.Center)
-		if m.mode == ModeHand && p == m.turn && i == m.handSel {
+		if m.mode == ModeHand && p == m.snapshotState.CurrentPlayer && i == m.handSel {
 			st = st.Reverse(true)
 		}
 
@@ -364,11 +349,11 @@ func (m Model) renderHand(p engine.Player) string {
 }
 
 func (m Model) renderHelp() string {
-	if m.done {
+	if m.snapshotState.IsOver {
 		return m.styles.help.Render("[r] restart    [q] quit")
 	}
 
-	if m.selected != nil {
+	if m.snapshotState.Source != nil {
 		return m.styles.help.Render("arrows/vim keys: move    [enter] confirm    [esc] cancel    [q] quit")
 	}
 
