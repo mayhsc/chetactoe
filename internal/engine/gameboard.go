@@ -2,14 +2,14 @@ package engine
 
 import "fmt"
 
-func InitializeGameBoard() GameBaord {
+func initializeGameBoard() GameBaord {
 	return GameBaord{
-		board: NewBoard(),
-		hand:  InitializeHand(),
+		board: newBoard(),
+		hand:  initializeHand(),
 	}
 }
 
-func (gb *GameBaord) MovePiece(oldPos Position, newPos Position, p Player) {
+func (gb *GameBaord) movePiece(oldPos Position, newPos Position, p Player) {
 	r1, c1 := oldPos.Row, oldPos.Col
 	r2, c2 := newPos.Row, newPos.Col
 
@@ -36,19 +36,19 @@ func (gb *GameBaord) MovePiece(oldPos Position, newPos Position, p Player) {
 	}
 }
 
-func (gb *GameBaord) HasWon(p Player) bool {
+func (gb *GameBaord) hasWon(p Player) bool {
 	return gb.board.isWinningState(p)
 }
 
-func (gb *GameBaord) PieceAt(pos Position) *Piece {
+func (gb *GameBaord) pieceAt(pos Position) *Piece {
 	return gb.board.pieces[pos.Row][pos.Col]
 }
 
-func (gb *GameBaord) HandPieces(p Player) [4]*Piece {
+func (gb *GameBaord) handPieces(p Player) [4]*Piece {
 	return gb.hand[int(p)].Pieces
 }
 
-func (gb *GameBaord) ValidMovesFor(pos Position) []Position {
+func (gb *GameBaord) validMovesFor(pos Position) []Position {
 	piece := gb.board.pieces[pos.Row][pos.Col]
 	if piece == nil {
 		return nil
@@ -120,7 +120,7 @@ func (gb GameBaord) getLabelForPiece(pType PieceType, p Player) string {
 func (gb GameBaord) getAllPossibleMoves(p Player) []Move {
 	var moves []Move
 
-	placements := gb.GetValidPlacements()
+	placements := gb.getValidPlacements()
 
 	for _, piece := range gb.hand[p].Pieces {
 		if piece != nil {

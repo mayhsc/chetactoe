@@ -41,7 +41,9 @@ func defaultStyles() Styles {
 }
 
 type Model struct {
-	game     *engine.GameBaord
+	move <-chan engine.Action
+	snapshot chan<- engine.GameSnapshot
+
 	turn     engine.Player
 	mode     Mode
 	cursor   engine.Position
@@ -62,10 +64,16 @@ func Run() {
 }
 
 func New() Model {
-	gb := engine.InitializeGameBoard()
+	// gb := engine.InitializeGameBoard()
+	move := make(chan engine.Action)
+	snapshot := make(chan engine.GameSnapshot)
+
+	go engine.StartGame(move, snapshot)
+	initSnapshot := <- snapshot
 
 	return Model{
-		game:   &gb,
+		move: move,
+		snapshot: snapshot,
 		turn:   engine.White,
 		cursor: engine.Position{},
 		styles: defaultStyles(),

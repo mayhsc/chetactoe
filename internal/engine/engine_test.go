@@ -100,7 +100,7 @@ func TestIsWinningState(t *testing.T) {
 }
 
 func TestGetAllPossibleMoves(t *testing.T) {
-	gb := InitializeGameBoard()
+	gb := initializeGameBoard()
 
 	whiteMoves := gb.getAllPossibleMoves(White)
 	expectedWhiteInitialDrops := 4 * 16
