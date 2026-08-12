@@ -41,12 +41,11 @@ func defaultStyles() Styles {
 }
 
 type Model struct {
-	move     chan<- engine.Action       // Channel to send actions to engine
-	snapshot <-chan engine.GameSnapshot // Channel to receive state snapshots
+	move     chan<- engine.Action       
+	snapshot <-chan engine.GameSnapshot 
 
-	snapshotState engine.GameSnapshot // Current state snapshot from engine
+	snapshotState engine.GameSnapshot 
 
-	// TUI-only navigation
 	mode    Mode
 	cursor  engine.Position
 	handSel int
@@ -110,7 +109,7 @@ func (m Model) updateDone(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "r":
-		m = New() // Re-instantiate game model on restart
+		m = New() 
 		return m, m.Init()
 	}
 
@@ -172,7 +171,7 @@ func (m Model) updatePlaying(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.move <- engine.Action{
 				ActionType: engine.Select,
 				Move: engine.Move{
-					Source: engine.Position{Row: idx, Col: -1}, // Col -1 represents hand slot
+					Source: engine.Position{Row: idx, Col: -1},
 				},
 			}
 			m.mode = ModeBoard
@@ -191,7 +190,6 @@ func (m *Model) toggleHandMode() {
 }
 
 func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
-	// 1. If a piece is currently selected, execute move to cursor position
 	if m.snapshotState.Source != nil {
 		m.move <- engine.Action{
 			ActionType: engine.Execute,
@@ -203,7 +201,6 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// 2. Otherwise, select piece from hand or board
 	if m.mode == ModeHand {
 		m.move <- engine.Action{
 			ActionType: engine.Select,
@@ -211,7 +208,7 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 				Source: engine.Position{Row: m.handSel, Col: -1},
 			},
 		}
-		m.mode = ModeBoard // Switch navigation back to board to pick destination
+		m.mode = ModeBoard
 	} else {
 		m.move <- engine.Action{
 			ActionType: engine.Select,
@@ -231,7 +228,7 @@ func (m Model) View() string {
 	b.WriteString("\n\n")
 
 	if m.snapshotState.IsOver {
-		b.WriteString(m.styles.title.Render(playerName(m.snapshotState.Winner) + " WINS!"))
+		b.WriteString(m.styles.title.Render(playerName(*m.snapshotState.Winner) + " WINS!"))
 	} else {
 		b.WriteString(fmt.Sprintf("Turn: %s", playerName(m.snapshotState.CurrentPlayer)))
 	}
@@ -257,7 +254,7 @@ func (m Model) View() string {
 
 func (m Model) currentStatus() string {
 	if m.snapshotState.IsOver {
-		return fmt.Sprintf("Game over! %s won.", playerName(m.snapshotState.Winner))
+		return fmt.Sprintf("Game over! %s won.", playerName(*m.snapshotState.Winner))
 	}
 
 	if m.snapshotState.Source != nil {

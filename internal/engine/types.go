@@ -64,7 +64,7 @@ type GameSnapshot struct {
 	CurrentPlayer Player
 	ValidMoves    []Position
 	Source        *Position
-	Winner        Player
+	Winner        *Player
 	IsOver        bool
 }
 
