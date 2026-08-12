@@ -51,3 +51,32 @@ type GameBaord struct {
 	board Board
 	hand  [2]Hand
 }
+
+type Move struct {
+	Source      Position
+	Destination Position
+}
+
+type GameSnapshot struct {
+	Board         [4][4]*Piece
+	WhiteHand     [4]*Piece
+	BlackHand     [4]*Piece
+	CurrentPlayer Player
+	ValidMoves    []Position
+	Source        *Position
+	Winner        *Player
+	IsOver        bool
+}
+
+type ActionType int
+
+const (
+	Execute ActionType = iota
+	Select
+	Cancel
+)
+
+type Action struct {
+	Move       Move
+	ActionType ActionType
+}

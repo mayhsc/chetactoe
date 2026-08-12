@@ -2,14 +2,14 @@ package engine
 
 import "fmt"
 
-func InitializeGameBoard() GameBaord {
+func initializeGameBoard() GameBaord {
 	return GameBaord{
-		board: NewBoard(),
-		hand:  InitializeHand(),
+		board: newBoard(),
+		hand:  initializeHand(),
 	}
 }
 
-func (gb *GameBaord) MovePiece(oldPos Position, newPos Position, p Player) {
+func (gb *GameBaord) movePiece(oldPos Position, newPos Position, p Player) {
 	r1, c1 := oldPos.Row, oldPos.Col
 	r2, c2 := newPos.Row, newPos.Col
 
@@ -36,7 +36,35 @@ func (gb *GameBaord) MovePiece(oldPos Position, newPos Position, p Player) {
 	}
 }
 
-func (gb *GameBaord) Print() {
+func (gb *GameBaord) hasWon(p Player) bool {
+	return gb.board.isWinningState(p)
+}
+
+func (gb *GameBaord) pieceAt(pos Position) *Piece {
+	return gb.board.pieces[pos.Row][pos.Col]
+}
+
+func (gb *GameBaord) handPieces(p Player) [4]*Piece {
+	return gb.hand[int(p)].Pieces
+}
+
+func (gb *GameBaord) validMovesFor(pos Position) []Position {
+	piece := gb.board.pieces[pos.Row][pos.Col]
+	if piece == nil {
+		return nil
+	}
+
+	return piece.ValidMoves(gb.board)
+}
+
+func (gb GameBaord) Print(turn Player) {
+	var player string
+	if turn == 0 {
+		player = "White"
+	} else {
+		player = "Black"
+	}
+
 	fmt.Print("\n=================== 4x4 BOARD ===================\n")
 
 	fmt.Print("Black Hand: ")
@@ -73,10 +101,12 @@ func (gb *GameBaord) Print() {
 			fmt.Print("_ ")
 		}
 	}
+
+	fmt.Printf("\nTurn: %s", player)
 	fmt.Print("\n===============================================\n\n")
 }
 
-func (gb *GameBaord) getLabelForPiece(pType PieceType, p Player) string {
+func (gb GameBaord) getLabelForPiece(pType PieceType, p Player) string {
 	i := int(p)
 
 	labels := [2][4]string{
@@ -85,4 +115,37 @@ func (gb *GameBaord) getLabelForPiece(pType PieceType, p Player) string {
 	}
 
 	return labels[i][int(pType)]
+}
+
+func (gb GameBaord) getAllPossibleMoves(p Player) []Move {
+	var moves []Move
+
+	placements := gb.getValidPlacements()
+
+	for _, piece := range gb.hand[p].Pieces {
+		if piece != nil {
+			for _, placement := range placements {
+				moves = append(moves, Move{
+					Source:       piece.position,
+					Destination: placement,
+				})
+			}
+		}
+	}
+
+	for _, row := range gb.board.pieces {
+		for _, piece := range row {
+			if piece != nil && piece.player == p {
+				for _, destination := range piece.ValidMoves(gb.board) {
+					moves = append(moves, Move{
+						Source:       piece.position,
+						Destination: destination,
+					})
+
+				}
+			}
+		}
+	}
+
+	return moves
 }
