@@ -1,6 +1,6 @@
 package engine
 
-func StartGame(act <-chan Action, snapshot chan<- GameSnapshot) {
+func StartGame(act <-chan Action, snapshot chan<- GameSnapshot, mode GameMode) {
 	game := NewGame()
 	snapshot <- game.Snapshot()
 

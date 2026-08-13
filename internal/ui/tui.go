@@ -40,16 +40,36 @@ func defaultStyles() Styles {
 	}
 }
 
-type Model struct {
-	move     chan<- engine.Action       
-	snapshot <-chan engine.GameSnapshot 
+type Screen int
 
-	snapshotState engine.GameSnapshot 
+const (
+	ScreenMenu Screen = iota
+	ScreenPlaying
+)
+
+type Model struct {
+	screen Screen
+
+	move     chan<- engine.Action
+	snapshot <-chan engine.GameSnapshot
+
+	snapshotState engine.GameSnapshot
 
 	mode    Mode
 	cursor  engine.Position
 	handSel int
 	styles  Styles
+
+	menuCursor int
+}
+
+var menuOptions = []struct {
+	label string
+	mode  engine.GameMode
+}{
+	{"Local (pass & play)", engine.GameModeLocal},
+	{"Vs Bot", engine.GameModeBot},
+	{"Network", engine.GameModeNetwork},
 }
 
 type SnapshotMsg engine.GameSnapshot
@@ -67,29 +87,89 @@ func Run() {
 	}
 }
 
+// func New() Model {
+// 	move := make(chan engine.Action, 10)
+// 	snapshot := make(chan engine.GameSnapshot, 10)
+
+// 	go engine.StartGame(move, snapshot)
+// 	initSnapshot := <-snapshot
+
+// 	return Model{
+// 		move:          move,
+// 		snapshot:      snapshot,
+// 		snapshotState: initSnapshot,
+// 		cursor:        engine.Position{},
+// 		styles:        defaultStyles(),
+// 	}
+// }
+
+// func (m Model) Init() tea.Cmd {
+// 	return waitForSnapshot(m.snapshot)
+// }
+
 func New() Model {
-	move := make(chan engine.Action, 10)
-	snapshot := make(chan engine.GameSnapshot, 10)
-
-	go engine.StartGame(move, snapshot)
-	initSnapshot := <-snapshot
-
 	return Model{
-		move:          move,
-		snapshot:      snapshot,
-		snapshotState: initSnapshot,
-		cursor:        engine.Position{},
-		styles:        defaultStyles(),
+		screen: ScreenMenu,
+		styles: defaultStyles(),
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return waitForSnapshot(m.snapshot)
+	return nil
+}
+
+func startGame(mode engine.GameMode) (Model, tea.Cmd) {
+	move := make(chan engine.Action, 10)
+	snapshot := make(chan engine.GameSnapshot, 10)
+
+	go engine.StartGame(move, snapshot, mode)
+
+	m := Model{
+		screen:   ScreenPlaying,
+		move:     move,
+		snapshot: snapshot,
+		cursor:   engine.Position{},
+		styles:   defaultStyles(),
+	}
+
+	return m, waitForSnapshot(snapshot)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
+	switch m.screen {
+	case ScreenMenu:
+		return m.updateMenu(msg)
+	case ScreenPlaying:
+		return m.updatePlayingScreen(msg)
+	}
+	return m, nil
+}
 
+func (m Model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+
+	switch keyMsg.String() {
+	case "ctrl+c", "q":
+		return m, tea.Quit
+
+	case "up", "k":
+		m.menuCursor = clamp(m.menuCursor-1, 0, len(menuOptions)-1)
+
+	case "down", "j":
+		m.menuCursor = clamp(m.menuCursor+1, 0, len(menuOptions)-1)
+
+	case "enter", " ":
+		return startGame(menuOptions[m.menuCursor].mode)
+	}
+
+	return m, nil
+}
+
+func (m Model) updatePlayingScreen(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
 	case SnapshotMsg:
 		m.snapshotState = engine.GameSnapshot(msg)
 		return m, waitForSnapshot(m.snapshot)
@@ -109,8 +189,7 @@ func (m Model) updateDone(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "r":
-		m = New() 
-		return m, m.Init()
+		return New(), nil
 	}
 
 	return m, nil
@@ -222,6 +301,34 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
+	if m.screen == ScreenMenu {
+		return m.renderMenu()
+	}
+	return m.renderGame()
+}
+
+func (m Model) renderMenu() string {
+	var b strings.Builder
+
+	b.WriteString(m.styles.title.Render("CHETACTOE"))
+	b.WriteString("\n\n")
+	b.WriteString("Choose a game mode:\n\n")
+
+	for i, opt := range menuOptions {
+		line := "  " + opt.label
+		if i == m.menuCursor {
+			line = m.styles.status.Render("▸ " + opt.label)
+		}
+		b.WriteString(line + "\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.styles.help.Render("↑/↓: choose    [enter] start    [q] quit"))
+
+	return b.String()
+}
+
+func (m Model) renderGame() string {
 	var b strings.Builder
 
 	b.WriteString(m.styles.title.Render("CHETACTOE"))

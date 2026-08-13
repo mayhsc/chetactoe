@@ -80,3 +80,11 @@ type Action struct {
 	Move       Move
 	ActionType ActionType
 }
+
+type GameMode int
+
+const (
+	GameModeLocal GameMode = iota
+	GameModeBot
+	GameModeNetwork
+)
