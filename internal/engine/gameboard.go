@@ -2,8 +2,8 @@ package engine
 
 import "fmt"
 
-func initializeGameBoard() GameBaord {
-	return GameBaord{
+func initializeGameBoard() *GameBaord {
+	return &GameBaord{
 		board: newBoard(),
 		hand:  initializeHand(),
 	}
