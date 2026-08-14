@@ -44,6 +44,7 @@ type Screen int
 
 const (
 	ScreenMenu Screen = iota
+	ScreenSelect
 	ScreenPlaying
 )
 
@@ -60,7 +61,8 @@ type Model struct {
 	handSel int
 	styles  Styles
 
-	menuCursor int
+	menuCursor   int
+	selectCursor int
 }
 
 var menuOptions = []struct {
@@ -70,6 +72,14 @@ var menuOptions = []struct {
 	{"Local (pass & play)", engine.GameModeLocal},
 	{"Vs Bot", engine.GameModeBot},
 	{"Network", engine.GameModeNetwork},
+}
+
+var selectOptions = []struct {
+	label string
+	player  engine.Player
+}{
+	{"White", engine.White},
+	{"Black", engine.Black},
 }
 
 type SnapshotMsg engine.GameSnapshot
@@ -87,26 +97,6 @@ func Run() {
 	}
 }
 
-// func New() Model {
-// 	move := make(chan engine.Action, 10)
-// 	snapshot := make(chan engine.GameSnapshot, 10)
-
-// 	go engine.StartGame(move, snapshot)
-// 	initSnapshot := <-snapshot
-
-// 	return Model{
-// 		move:          move,
-// 		snapshot:      snapshot,
-// 		snapshotState: initSnapshot,
-// 		cursor:        engine.Position{},
-// 		styles:        defaultStyles(),
-// 	}
-// }
-
-// func (m Model) Init() tea.Cmd {
-// 	return waitForSnapshot(m.snapshot)
-// }
-
 func New() Model {
 	return Model{
 		screen: ScreenMenu,
@@ -118,11 +108,16 @@ func (m Model) Init() tea.Cmd {
 	return nil
 }
 
-func startGame(mode engine.GameMode) (Model, tea.Cmd) {
+func startGame(mode engine.GameMode, p *engine.Player) (Model, tea.Cmd) {
 	move := make(chan engine.Action, 10)
 	snapshot := make(chan engine.GameSnapshot, 10)
 
-	go engine.StartGame(move, snapshot, mode)
+	switch mode {
+	case engine.GameModeLocal:
+		go engine.StartLocalGame(move, snapshot)
+	case engine.GameModeBot:
+		go engine.StartBotGame(move, snapshot, *p)
+	}
 
 	m := Model{
 		screen:   ScreenPlaying,
@@ -139,6 +134,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.screen {
 	case ScreenMenu:
 		return m.updateMenu(msg)
+	case ScreenSelect:
+		return m.updateSelect(msg)
 	case ScreenPlaying:
 		return m.updatePlayingScreen(msg)
 	}
@@ -162,7 +159,38 @@ func (m Model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.menuCursor = clamp(m.menuCursor+1, 0, len(menuOptions)-1)
 
 	case "enter", " ":
-		return startGame(menuOptions[m.menuCursor].mode)
+		gameMode := menuOptions[m.menuCursor].mode
+		if gameMode == engine.GameModeBot {
+			return Model{
+				screen: ScreenSelect,
+				cursor: engine.Position{},
+				styles: defaultStyles(),
+			}, nil
+		}
+		return startGame(menuOptions[m.menuCursor].mode, nil)
+	}
+
+	return m, nil
+}
+
+func (m Model) updateSelect(msg tea.Msg) (tea.Model, tea.Cmd) {
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+
+	switch keyMsg.String() {
+	case "ctrl+c", "q":
+		return m, tea.Quit
+
+	case "up", "k":
+		m.selectCursor = clamp(m.selectCursor-1, 0, len(selectOptions)-1)
+
+	case "down", "j":
+		m.selectCursor = clamp(m.selectCursor+1, 0, len(selectOptions)-1)
+
+	case "enter", " ":
+		return startGame(engine.GameModeBot, &selectOptions[m.selectCursor].player)
 	}
 
 	return m, nil
@@ -177,6 +205,9 @@ func (m Model) updatePlayingScreen(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if m.snapshotState.IsOver {
 			return m.updateDone(msg)
+		}
+		if m.snapshotState.CurrentPlayer != selectOptions[m.selectCursor].player {
+			return m, nil
 		}
 		return m.updatePlaying(msg)
 	}
@@ -301,10 +332,15 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	if m.screen == ScreenMenu {
+	switch m.screen {
+	case ScreenMenu:
 		return m.renderMenu()
+	case ScreenPlaying:
+		return m.renderGame()
+	case ScreenSelect:
+		return m.renderSelect()
 	}
-	return m.renderGame()
+	return m.renderMenu()
 }
 
 func (m Model) renderMenu() string {
@@ -317,6 +353,27 @@ func (m Model) renderMenu() string {
 	for i, opt := range menuOptions {
 		line := "  " + opt.label
 		if i == m.menuCursor {
+			line = m.styles.status.Render("▸ " + opt.label)
+		}
+		b.WriteString(line + "\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.styles.help.Render("↑/↓: choose    [enter] start    [q] quit"))
+
+	return b.String()
+}
+
+func (m Model) renderSelect() string {
+	var b strings.Builder
+
+	b.WriteString(m.styles.title.Render("CHETACTOE"))
+	b.WriteString("\n\n")
+	b.WriteString("White or Black:\n\n")
+
+	for i, opt := range selectOptions {
+		line := "  " + opt.label
+		if i == m.selectCursor {
 			line = m.styles.status.Render("▸ " + opt.label)
 		}
 		b.WriteString(line + "\n")

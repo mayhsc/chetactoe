@@ -1,14 +1,5 @@
 package engine
 
-func StartGame(act <-chan Action, snapshot chan<- GameSnapshot, mode GameMode) {
-	switch mode {
-	case GameModeLocal:
-		go StartLocalGame(act, snapshot)
-	case GameModeBot:
-		go StartBotGame(act, snapshot)
-	}
-}
-
 func StartLocalGame(act <-chan Action, snapshot chan<- GameSnapshot) {
 	game := NewGame()
 	snapshot <- game.Snapshot()
@@ -20,9 +11,24 @@ func StartLocalGame(act <-chan Action, snapshot chan<- GameSnapshot) {
 
 }
 
-func StartBotGame(act <-chan Action, snapshot chan<- GameSnapshot) {
+func StartBotGame(act <-chan Action, snapshot chan<- GameSnapshot, p Player) {
 	game := NewGame()
 	snapshot <- game.Snapshot()
+
+	performBotMove := func() {
+		botMove := game.gb.getAllPossibleMoves(game.p)[0]
+
+		s := game.apply(Action{
+			ActionType: Execute,
+			Move:       botMove,
+		})
+
+		snapshot <- s
+	}
+
+	if p == Black {
+		performBotMove()
+	}
 
 	for action := range act {
 		s := game.apply(action)
@@ -32,13 +38,7 @@ func StartBotGame(act <-chan Action, snapshot chan<- GameSnapshot) {
 			continue
 		}
 
-		botMove := game.gb.getAllPossibleMoves(game.p)[0]
-
-		s = game.apply(Action{
-			ActionType: Execute,
-			Move:       botMove,
-		})
-
-		snapshot <- s
+		performBotMove()
 	}
+
 }
