@@ -297,6 +297,11 @@ html, body {
 	color: var(--accent);
 }
 
+/* Finished: the line that has been reporting whose turn it is now reports the
+   result, so it is given the weight to be read as one. */
+.app.over .turn-line { font-weight: 600; letter-spacing: .2em; }
+.app.over .dot { box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 22%, transparent); }
+
 .turn-detail {
 	margin: 12px 0 0;
 	font-size: 13px;
@@ -317,6 +322,9 @@ html, body {
 	color: var(--ink-soft);
 }
 
+.roster h2 { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.roster h2 .count { color: var(--ink-faint); letter-spacing: .14em; }
+
 .roster { padding-bottom: clamp(16px, 1.8vw, 26px); border-bottom: 1px solid var(--card-border); }
 
 .roster-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; }
@@ -326,6 +334,60 @@ html, body {
 	width: auto;
 	display: block;
 }
+
+/*
+ * A reserve slot. The four slots are fixed places — pawn, knight, bishop, rook —
+ * so a piece that is in play leaves its own socket behind rather than closing the
+ * row up: the reserve then reads as "four pieces, two of them out there", and a
+ * captured piece coming back lands in a place the eye already knows.
+ */
+.slot {
+	appearance: none;
+	border: 0;
+	padding: 4px 4px 0;
+	background: none;
+	font: inherit;
+	color: inherit;
+	cursor: grab;
+	border-radius: 10px;
+	position: relative;
+	transition: transform .16s ease, background-color .16s ease, opacity .16s ease;
+	/* the piece is dragged out of here onto the board, so the press must not scroll
+	   the panel, select the label, or start a native image drag */
+	touch-action: none;
+	user-select: none;
+	-webkit-user-drag: none;
+}
+
+.slot img { -webkit-user-drag: none; pointer-events: none; }
+.slot:active:not(:disabled) { cursor: grabbing; }
+
+.slot:hover:not(:disabled) { transform: translateY(-3px); }
+.slot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Selected: the same piece is also standing proud on the board. */
+.slot.selected {
+	background: color-mix(in oklab, var(--accent) 20%, transparent);
+	transform: translateY(-3px);
+}
+
+/* In play, so the socket is empty. The piece is drawn faintly to say which one is
+   missing, which is more use than a blank gap. */
+.slot[data-state="board"] { cursor: default; }
+.slot[data-state="board"] img { opacity: .17; filter: grayscale(1); }
+
+.slot[data-state="board"]::after {
+	content: '';
+	position: absolute;
+	left: 50%; bottom: 2px;
+	width: 62%; height: 3px;
+	transform: translateX(-50%);
+	border-radius: 2px;
+	background: var(--card-border);
+}
+
+/* In hand but not yours to move yet. */
+.slot:disabled[data-state="hand"] { cursor: default; opacity: .55; }
 
 /* -------------------------------------------------------------- history */
 
@@ -343,8 +405,13 @@ html, body {
 
 .history .no { color: var(--ink-faint); font-variant-numeric: tabular-nums; }
 .history img { height: 25px; width: auto; justify-self: center; display: block; }
-.history .move { color: var(--ink); }
+.history .move { color: var(--ink); display: inline-flex; align-items: center; }
 .history .move .arrow { color: var(--ink-faint); margin: 0 .5em; }
+
+/* A capture, which is a piece going back to its owner's reserve rather than out of
+   the game — so the history says which piece went back, not just that one did. */
+.history .took { color: var(--ink-faint); margin-left: .7em; display: inline-flex; align-items: center; gap: .25em; }
+.history .took img { height: 18px; }
 
 /* -------------------------------------------------------------- restart */
 

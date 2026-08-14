@@ -5,29 +5,52 @@ import (
 	"slices"
 )
 
-func CreatePiece(ptype PieceType, player Player) *Piece {
-	var index int
-	if player == White {
-		index = -1
-	} else {
-		index = -2
+var (
+	knightOffsets = []Position{
+		{Row: 1, Col: 2},
+		{Row: 2, Col: 1},
+		{Row: -1, Col: 2},
+		{Row: -2, Col: 1},
+		{Row: 1, Col: -2},
+		{Row: 2, Col: -1},
+		{Row: -1, Col: -2},
+		{Row: -2, Col: -1},
 	}
 
+	orthogonals = []Position{
+		{Row: 1, Col: 0},
+		{Row: -1, Col: 0},
+		{Row: 0, Col: 1},
+		{Row: 0, Col: -1},
+	}
+
+	diagonals = []Position{
+		{Row: 1, Col: 1},
+		{Row: -1, Col: 1},
+		{Row: 1, Col: -1},
+		{Row: -1, Col: -1},
+	}
+)
+
+// CreatePiece makes a piece in its owner's hand. Hand pieces sit at the column
+// their player's hand reports and the row of their own type, so the slot a piece
+// starts in is the slot it returns to if it is ever captured.
+func CreatePiece(ptype PieceType, player Player) *Piece {
 	return &Piece{
 		pieceType: ptype,
 		player:    player,
 		position: Position{
-			Col: index,
 			Row: int(ptype),
+			Col: HandCol(player),
 		},
 		direction: None,
 	}
 }
 
-func InitializePieces(player Player) [4]*Piece {
+func InitializePieces(player Player) [HandSize]*Piece {
 	pieceTypes := []PieceType{Pawn, Knight, Bishop, Rook}
 
-	var pieces [4]*Piece
+	var pieces [HandSize]*Piece
 
 	for i, pieceType := range pieceTypes {
 		pieces[i] = CreatePiece(pieceType, player)
@@ -36,58 +59,80 @@ func InitializePieces(player Player) [4]*Piece {
 	return pieces
 }
 
-func (pt PieceType) Moves(position Position, bd Board) []Position {
-	var moves []Position
-	var validMoves []Position
+// ValidMoves lists the squares this piece may move to from where it stands.
+//
+// A square holding an enemy piece is included — that is a capture, and the
+// captured piece goes back to its owner's hand. A square holding one of the
+// mover's own pieces is not. A piece still in the hand has no moves of its own:
+// its destinations are the board's empty squares, which GameBoard supplies,
+// because they do not depend on which piece is being placed.
+func (p Piece) ValidMoves(bd Board) []Position {
+	if p.InHand() {
+		return nil
+	}
 
-	switch pt {
+	switch p.pieceType {
+	case Pawn:
+		return p.stepMoves(bd, p.pawnOffsets())
+
 	case Knight:
-		offsets := []Position{
-			{1, 2},
-			{2, 1},
-			{-1, 2},
-			{-2, 1},
-			{1, -2},
-			{2, -1},
-			{-1, -2},
-			{-2, -1},
-		}
-
-		addOffset(&moves, offsets, position)
-		for _, move := range moves {
-			if bd.pieces[move.Row][move.Col] == nil {
-				validMoves = append(validMoves, move)
-			}
-		}
-		return validMoves
+		return p.stepMoves(bd, knightOffsets)
 
 	case Bishop:
-		directions := []Position{
-			{1, 1},
-			{-1, 1},
-			{1, -1},
-			{-1, -1},
-		}
-
-		addSlidingMoves(&moves, position, directions, bd)
+		return p.slideMoves(bd, diagonals)
 
 	case Rook:
-		directions := []Position{
-			{1, 0},
-			{-1, 0},
-			{0, 1},
-			{0, -1},
+		return p.slideMoves(bd, orthogonals)
+	}
+
+	return nil
+}
+
+// pawnOffsets is the pawn's one step. A pawn with no direction set steps any of
+// the four ways — which is how CreatePiece makes them, and what keeps a piece
+// placed from the hand from needing a facing.
+func (p Piece) pawnOffsets() []Position {
+	switch p.direction {
+	case Up:
+		return []Position{{Row: 1, Col: 0}}
+	case Down:
+		return []Position{{Row: -1, Col: 0}}
+	case Right:
+		return []Position{{Row: 0, Col: 1}}
+	case Left:
+		return []Position{{Row: 0, Col: -1}}
+	}
+
+	return orthogonals
+}
+
+// stepMoves is the jumping pieces: each offset is one candidate square, and what
+// stands between does not matter.
+func (p Piece) stepMoves(bd Board, offsets []Position) []Position {
+	var moves []Position
+
+	for _, offset := range offsets {
+		target := Position{
+			Row: p.position.Row + offset.Row,
+			Col: p.position.Col + offset.Col,
 		}
 
-		addSlidingMoves(&moves, position, directions, bd)
+		if p.canLand(target, bd) {
+			moves = append(moves, target)
+		}
 	}
 
 	return moves
 }
 
-func addSlidingMoves(moves *[]Position, position Position, directions []Position, bd Board) {
+// slideMoves is the sliding pieces: run down each direction until the board ends
+// or something is in the way. An enemy in the way can be taken, one of your own
+// cannot, and either stops the slide.
+func (p Piece) slideMoves(bd Board, directions []Position) []Position {
+	var moves []Position
+
 	for _, dir := range directions {
-		current := position
+		current := p.position
 
 		for {
 			current = Position{
@@ -99,22 +144,43 @@ func addSlidingMoves(moves *[]Position, position Position, directions []Position
 				break
 			}
 
-			if bd.pieces[current.Row][current.Col] == nil {
-				*moves = append(*moves, current)
+			occupant := bd.pieceAt(current)
+
+			if occupant == nil {
+				moves = append(moves, current)
 				continue
 			}
 
-			*moves = append(*moves, current)
+			if occupant.player != p.player {
+				moves = append(moves, current)
+			}
+
 			break
 		}
 	}
+
+	return moves
 }
 
-func (pt PieceType) ViewMoves(pos Position, moves []Position) {
-	for r := range 4 {
+// canLand is the one rule shared by every piece: on the board, and not onto one
+// of your own.
+func (p Piece) canLand(pos Position, bd Board) bool {
+	if !validPosition(pos) {
+		return false
+	}
+
+	occupant := bd.pieceAt(pos)
+
+	return occupant == nil || occupant.player != p.player
+}
+
+func (p Piece) ViewMoves(moves []Position) {
+	pos := p.position
+
+	for r := range Cells {
 		fmt.Printf("%d | ", r)
 
-		for c := range 4 {
+		for c := range Cells {
 			switch {
 			case r == pos.Row && c == pos.Col:
 				fmt.Print("P ")
@@ -135,93 +201,9 @@ func contains(moves []Position, pos Position) bool {
 	return slices.Contains(moves, pos)
 }
 
-func (p Piece) ValidMoves(pos Position, bd Board) []Position {
-	if p.pieceType == Pawn {
-		return p.pawnMoves(pos, bd)
-	}
-
-	return p.pieceType.Moves(pos, bd)
-}
-
-func (p Piece) pawnMoves(pos Position, bd Board) []Position {
-	var moves []Position
-
-	switch p.direction {
-	case Up:
-		next := Position{
-			Row: pos.Row + 1,
-			Col: pos.Col,
-		}
-		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
-			moves = append(moves, next)
-		}
-
-	case Down:
-		next := Position{
-			Row: pos.Row - 1,
-			Col: pos.Col,
-		}
-		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
-			moves = append(moves, next)
-		}
-
-	case Right:
-		next := Position{
-			Row: pos.Row,
-			Col: pos.Col + 1,
-		}
-		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
-			moves = append(moves, next)
-		}
-
-	case Left:
-		next := Position{
-			Row: pos.Row,
-			Col: pos.Col - 1,
-		}
-		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
-			moves = append(moves, next)
-		}
-
-	case None:
-		offsets := []Position{
-			{Row: -1, Col: 0},
-			{Row: 0, Col: -1},
-			{Row: 1, Col: 0},
-			{Row: 0, Col: 1},
-		}
-
-		addOffset(&moves, offsets, pos)
-
-		var validMoves []Position
-		for _, move := range moves {
-			if bd.pieces[move.Row][move.Col] == nil {
-				validMoves = append(validMoves, move)
-			}
-		}
-
-		return validMoves
-	}
-
-	return moves
-}
-
-func addOffset(moves *[]Position, offsets []Position, position Position) {
-	for _, offset := range offsets {
-		newPosition := Position{
-			Row: position.Row + offset.Row,
-			Col: position.Col + offset.Col,
-		}
-
-		if validPosition(newPosition) {
-			*moves = append(*moves, newPosition)
-		}
-	}
-}
-
 func validPosition(pos Position) bool {
 	return pos.Row >= 0 &&
-		pos.Row < 4 &&
+		pos.Row < Cells &&
 		pos.Col >= 0 &&
-		pos.Col < 4
+		pos.Col < Cells
 }

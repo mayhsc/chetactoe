@@ -5,38 +5,36 @@ import { createStage } from './stage.js';
 import { buildBoard, cellCentre, parseSquare, BOARD, FILES, RANKS } from './scene.js';
 import { createDragController } from './interaction.js';
 import { createViewControls } from './viewcontrols.js';
+import {
+	TYPES, apply, createGame, destinations, handCount, handRef, isHandRef,
+	other, parseHandRef, pieceAt, reset, winningLine,
+} from './game.js';
 
 const THEME_KEY = 'chetactoe-theme';
 
 const BACKDROP = { light: 0xf2ede5, dark: 0x1c1a16 };
 const GROUND = { light: 0xf2ede5, dark: 0x23201b };
 
-/**
- * Sample position and history. This is a design shell, not a rules engine — the
- * moves below are the ones in the reference layout, and nothing validates them.
- */
-const STATE = {
-	you: 'dark',
-	them: 'light',
-	turn: 'you',
-	pieces: [
-		{ type: 'pawn', tone: 'dark', square: 'B1' },
-		{ type: 'knight', tone: 'dark', square: 'A2', turn: 0.5 },
-		{ type: 'rook', tone: 'light', square: 'D2' },
-		{ type: 'pawn', tone: 'light', square: 'C3' },
-		{ type: 'bishop', tone: 'dark', square: 'B4' },
-	],
-	history: [
-		{ no: 7, type: 'knight', tone: 'dark', from: 'B1', to: 'C3' },
-		{ no: 6, type: 'pawn', tone: 'dark', from: 'C3', to: 'C4' },
-		{ no: 5, type: 'rook', tone: 'dark', from: 'A2', to: 'D2' },
-		{ no: 4, type: 'pawn', tone: 'dark', from: 'D4', to: 'D3' },
-	],
-	roster: [ 'pawn', 'knight', 'rook', 'bishop' ],
-};
+const SELECT_LIFT = 0.0035; // a selected piece stands off the board this far
 
-/** Opening squares, snapshotted before anything can move them. */
-const START = STATE.pieces.map( ( p ) => ( { square: p.square } ) );
+/**
+ * Which set the local player has. The shell is one board two people sit at, so
+ * both sides are playable here; this only decides which reserve is labelled
+ * "YOUR PIECES" and which way the turn line reads.
+ */
+const YOU = 'dark';
+const THEM = other( YOU );
+
+/** The rules and the whole position live here. `sync()` draws whatever it says. */
+const game = createGame();
+
+/**
+ * What is selected: a square like `B3`, a reserve slot like `dark:knight`, or
+ * null. It is the client's half of the engine's select / execute / cancel — a
+ * selection asks "where may this go", and the answer is what gets drawn on the
+ * board.
+ */
+let selection = null;
 
 // already resolved and applied by the blocking script in index.html
 let theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
@@ -64,21 +62,55 @@ function img( tone, type, alt ) {
 
 }
 
-function paintUI() {
+// ---------------------------------------------------------------------- panel
 
-	const you = STATE.you, them = STATE.them;
+/**
+ * The two reserves, as four fixed slots each — pawn, knight, bishop, rook, the
+ * same order the engine's hand array uses. A slot keeps its place when its piece
+ * is in play and shows as an empty socket, so the panel reads as "these four,
+ * two of them out on the board" rather than as a list that shuffles.
+ *
+ * This is also where a captured piece reappears: nothing is taken out of the
+ * game, so a piece that leaves the board comes back to its own socket here and
+ * can be placed again.
+ */
+function paintReserve( id, tone ) {
 
-	const fill = ( id, tone ) => {
+	const host = document.getElementById( id );
 
-		const host = document.getElementById( id );
-		host.replaceChildren( ...STATE.roster.map( ( t ) => img( tone, t ) ) );
+	host.replaceChildren( ...TYPES.map( ( type ) => {
 
-	};
+		const ref = handRef( tone, type );
+		const inHand = pieceAt( game, ref ) !== null;
+		const yours = tone === game.turn && ! game.over;
 
-	fill( 'roster-you', you );
-	fill( 'roster-them', them );
+		const slot = document.createElement( 'button' );
+		slot.type = 'button';
+		slot.className = 'slot';
+		slot.dataset.ref = ref;
+		slot.dataset.state = inHand ? 'hand' : 'board';
+		slot.disabled = ! inHand || ! yours;
+		slot.setAttribute( 'aria-pressed', String( selection === ref ) );
+		slot.title = inHand
+			? ( yours ? `Place the ${type}` : `${type} in reserve` )
+			: `${type} is in play`;
 
-	document.getElementById( 'history-list' ).replaceChildren( ...STATE.history.map( ( m ) => {
+		if ( selection === ref ) slot.classList.add( 'selected' );
+
+		slot.append( img( tone, type, `${tone} ${type}` ) );
+		return slot;
+
+	} ) );
+
+	document.getElementById( `${id}-count` ).textContent = `${handCount( game, tone )} IN HAND`;
+
+}
+
+function paintHistory() {
+
+	const label = ( entry ) => ( entry.placed ? 'HAND' : entry.from );
+
+	document.getElementById( 'history-list' ).replaceChildren( ...game.history.slice( 0, 12 ).map( ( m ) => {
 
 		const li = document.createElement( 'li' );
 
@@ -88,21 +120,77 @@ function paintUI() {
 
 		const move = document.createElement( 'span' );
 		move.className = 'move';
-		move.innerHTML = `${m.from}<span class="arrow">→</span>${m.to}`;
+		move.innerHTML = `${label( m )}<span class="arrow">→</span>${m.to}`;
 
-		li.append( no, img( m.tone, m.type, `${m.type}` ), move );
+		if ( m.captured ) {
+
+			const took = document.createElement( 'span' );
+			took.className = 'took';
+			took.title = `took the ${m.captured.tone} ${m.captured.type}`;
+			took.append( '×', img( m.captured.tone, m.captured.type, `took ${m.captured.type}` ) );
+			move.append( took );
+
+		}
+
+		li.append( no, img( m.tone, m.type, m.type ), move );
 		return li;
 
 	} ) );
 
-	const yourTurn = STATE.turn === 'you';
-	const tone = yourTurn ? you : them;
-	document.getElementById( 'turn-label' ).textContent = yourTurn ? 'YOUR TURN' : 'OPPONENT’S TURN';
-	document.getElementById( 'turn-dot' ).classList.toggle( 'them', ! yourTurn );
-	document.getElementById( 'turn-side' ).textContent =
-		tone === 'dark' ? 'Brown pieces' : 'Natural pieces';
+}
+
+function paintTurn() {
+
+	const yourTurn = game.turn === YOU;
+	const tone = game.turn;
+
+	const label = document.getElementById( 'turn-label' );
+	const dot = document.getElementById( 'turn-dot' );
+	const side = document.getElementById( 'turn-side' );
+	const hint = document.getElementById( 'turn-hint' );
+
+	const setName = ( t ) => ( t === 'dark' ? 'Brown pieces' : 'Natural pieces' );
+
+	if ( game.over ) {
+
+		label.textContent = game.winner === null
+			? 'DRAW'
+			: game.winner === YOU ? 'YOU WIN' : 'OPPONENT WINS';
+
+		dot.classList.toggle( 'them', game.winner === THEM );
+		side.textContent = game.winner === null ? 'Nobody can move' : setName( game.winner );
+		hint.textContent = 'Restart to play again.';
+
+	} else {
+
+		label.textContent = yourTurn ? 'YOUR TURN' : 'OPPONENT’S TURN';
+		dot.classList.toggle( 'them', ! yourTurn );
+		side.textContent = setName( tone );
+
+		hint.textContent = selection === null
+			? handCount( game, tone ) > 0
+				? 'Drag a piece out of the reserve, or tap one to see where it can go.'
+				: 'Drag a piece, or tap one to see where it can go.'
+			: isHandRef( selection )
+				? 'Drop it on a marked square, or tap one. Escape cancels.'
+				: 'Drag it, or tap a marked square. Escape cancels.';
+
+	}
+
+	document.querySelector( '.app' ).classList.toggle( 'over', game.over );
 
 }
+
+function paintUI() {
+
+	paintReserve( 'roster-you', YOU );
+	paintReserve( 'roster-them', THEM );
+	paintHistory();
+	paintTurn();
+
+}
+
+// ---------------------------------------------------------------------- board
 
 function setTheme( next, stage ) {
 
@@ -131,7 +219,19 @@ async function main() {
 		ao: { radius: 0.0045, thickness: 0.01, scale: 1.5 },
 	} );
 
-	const { pieces } = buildBoard( stage.scene, STATE.pieces );
+	// All eight pieces are built once, here, and none of them starts on the board:
+	// every piece begins in its owner's reserve, which is what the panel draws. A
+	// mesh with no square is hidden rather than absent, so placing one is a
+	// visibility change and nothing is ever created mid-game.
+	const layout = [ YOU, THEM ].flatMap( ( tone ) => TYPES.map( ( type, i ) => ( {
+		id: `${tone}-${type}`,
+		type,
+		tone,
+		square: null,
+		turn: i * 0.5,
+	} ) ) );
+
+	const { pieces } = buildBoard( stage.scene, layout );
 	window.__stage = stage;
 
 	// pan is owned by the view controls now, not hard-coded here
@@ -140,33 +240,217 @@ async function main() {
 
 	const view = createViewControls( { stage, container: document.getElementById( 'view-controls' ) } );
 
-	// ------------------------------------------------------------------ dragging
+	// ------------------------------------------------------------------ the game
 
-	let moveNo = STATE.history.length ? STATE.history[ 0 ].no : 0;
+	const meshOf = ( id ) => pieces.children.find( ( m ) => m.userData.id === id ) ?? null;
 
-	const drag = createDragController( {
+	/** Where the rules currently say this mesh's piece is, or null for the reserve. */
+	function squareOf( mesh ) {
+
+		for ( let row = 0; row < BOARD.cells; row ++ ) {
+
+			for ( let col = 0; col < BOARD.cells; col ++ ) {
+
+				if ( game.board[ row ][ col ]?.id === mesh.userData.id ) {
+
+					return `${FILES[ col ]}${RANKS[ row ]}`;
+
+				}
+
+			}
+
+		}
+
+		return null;
+
+	}
+
+	/**
+	 * Draws the position. The rules are the truth and this is the only thing that
+	 * reads them, so a piece is where the state says, visible only if it is in
+	 * play, and the panel and the board can never disagree.
+	 *
+	 * `animate` is the one piece that just moved, which slides instead of jumping.
+	 */
+	function sync( { animate = null } = {} ) {
+
+		for ( const mesh of pieces.children ) {
+
+			const square = squareOf( mesh );
+			mesh.userData.square = square;
+
+			// The one being carried follows the pointer, not the state — and a piece on
+			// its way out of a reserve is on screen while the rules still have it in
+			// hand, so its visibility is left alone too.
+			if ( mesh === pointer.dragging() ) continue;
+
+			mesh.visible = square !== null;
+
+			if ( square === null ) continue;
+
+			// Both of these rest the piece at the height `liftFor` below asks for, so
+			// a selected piece stands proud of the board however it got there.
+			if ( mesh === animate ) pointer.settleTo( mesh, square );
+			else pointer.snapTo( mesh, square );
+
+		}
+
+		paintHints();
+		paintUI();
+
+	}
+
+	/** The selection's destinations, marked up so a capture can be coloured. */
+	function paintHints() {
+
+		if ( game.over ) {
+
+			// One last thing worth drawing: the line that won it. Wide markers, since
+			// every square in it has a piece standing on it.
+			const line = game.winner ? winningLine( game, game.winner ) : null;
+			pointer.setHints(
+				( line ?? [] ).map( ( square ) => ( { square, wide: true } ) ),
+				{ interactive: false },
+			);
+			return;
+
+		}
+
+		if ( selection === null ) { pointer.setHints( [] ); return; }
+
+		pointer.setHints( destinations( game, selection ).map( ( square ) => ( {
+			square,
+			capture: pieceAt( game, square ) !== null,
+		} ) ) );
+
+	}
+
+	function select( ref ) {
+
+		selection = ref !== null && destinations( game, ref ).length > 0 ? ref : null;
+		sync();
+
+	}
+
+	/**
+	 * One move, through the rules. Everything that moves a piece comes through
+	 * here — drag, tap, or test hook — so an illegal move is refused in exactly one
+	 * place and the board cannot end up showing something the rules never allowed.
+	 */
+	function act( from, to ) {
+
+		const result = apply( game, from, to );
+
+		if ( ! result.ok ) return result;
+
+		selection = null;
+
+		// A piece coming out of the reserve has no board position to slide from, so
+		// it appears on its square; a piece already in play slides.
+		sync( { animate: isHandRef( from ) ? null : meshOf( result.piece.id ) } );
+
+		return result;
+
+	}
+
+	const pointer = createDragController( {
 		stage,
 		pieces,
-		onMove( { mesh, from, to } ) {
+		rules: {
+			// What may be picked up, and where it may go: one question, asked of the
+			// rules, so the pointer code has no second opinion about whose turn it is.
+			destinations: ( mesh ) => ( mesh.userData.square ? destinations( game, mesh.userData.square ) : [] ),
 
-			const piece = STATE.pieces.find( ( p ) => p.square === from );
-			if ( piece ) piece.square = to;
+			// Selection is legible on the board as well as in the panel.
+			liftFor: ( mesh ) => ( mesh.userData.square === selection ? SELECT_LIFT : 0 ),
+		},
 
-			STATE.history.unshift( {
-				no: ++ moveNo,
-				type: mesh.name,
-				tone: piece?.tone ?? STATE.you,
-				from,
-				to,
-			} );
-			STATE.history = STATE.history.slice( 0, 12 );
+		onAct: ( { from, to } ) => act( from, to ).ok,
 
-			// free movement, so there is no turn to enforce — but the status line
-			// should still say something true, and "whoever did not just move" is it
-			STATE.turn = ( piece?.tone ?? STATE.you ) === STATE.you ? 'them' : 'you';
-			paintUI();
+		// A piece dragged out of a reserve and dropped nowhere legal goes back to it,
+		// which is where the rules still have it — so a redraw is the whole undo.
+		onAbort: () => select( null ),
+
+		onTap: ( { mesh, square, picking } ) => {
+
+			if ( game.over ) return;
+
+			// Picking a piece up is also selecting it.
+			if ( picking ) { select( mesh.userData.square ); return; }
+
+			// A tap on a piece: select it, or clear it if it was already selected.
+			if ( mesh ) {
+
+				const ref = mesh.userData.square;
+				select( ref === selection ? null : ref );
+				return;
+
+			}
+
+			// A tap on a square. If something is selected and this is one of its
+			// destinations, that is the move — including placing from the reserve,
+			// which is the only way to play a piece that has no mesh on the board yet.
+			if ( square && selection !== null && destinations( game, selection ).includes( square ) ) {
+
+				act( selection, square );
+				return;
+
+			}
+
+			select( null );
 
 		},
+	} );
+
+	/** The mesh for a reserve slot: `dark:knight` names the same piece as `dark-knight`. */
+	function meshOfRef( ref ) {
+
+		const { tone, type } = parseHandRef( ref );
+		return meshOf( `${tone}-${type}` );
+
+	}
+
+	// Pressing a reserve slot selects that piece and the board lights up with every
+	// square it may be placed on. Keep moving and you are dragging the piece itself
+	// out of the panel and onto the board; let go without moving and it stays
+	// selected, so a square can be clicked instead. One gesture, either way.
+	for ( const id of [ 'roster-you', 'roster-them' ] ) {
+
+		document.getElementById( id ).addEventListener( 'pointerdown', ( event ) => {
+
+			if ( event.button !== 0 ) return;
+
+			const slot = event.target.closest( '.slot' );
+			if ( ! slot || slot.disabled ) return;
+
+			const ref = slot.dataset.ref;
+			const wasSelected = selection === ref;
+
+			select( ref );
+
+			pointer.carryFrom( {
+				mesh: meshOfRef( ref ),
+				ref,
+				pointerId: event.pointerId,
+				clientX: event.clientX,
+				clientY: event.clientY,
+				// Pressing the selected piece again puts it back down.
+				onClick: () => { if ( wasSelected ) select( null ); },
+			} );
+
+			// No text selection, and no native image drag racing the carry.
+			event.preventDefault();
+
+		} );
+
+	}
+
+	// Escape clears a selection, because clicking somewhere harmless to get rid of one
+	// is not obvious and on a board every square looks like it might do something.
+	window.addEventListener( 'keydown', ( event ) => {
+
+		if ( event.key === 'Escape' && selection !== null ) select( null );
+
 	} );
 
 	// ------------------------------------------------------------------- labels
@@ -218,23 +502,10 @@ async function main() {
 
 	document.getElementById( 'restart' ).addEventListener( 'click', () => {
 
-		STATE.history = [];
-		moveNo = 0;
-		STATE.turn = 'you';
+		reset( game );
+		selection = null;
+		sync();
 
-		// put every piece back where it started
-		STATE.pieces.forEach( ( spec, i ) => {
-
-			spec.square = START[ i ].square;
-			const mesh = pieces.children[ i ];
-			const { col, row } = parseSquare( spec.square );
-			const [ x, z ] = cellCentre( col, row );
-			mesh.position.set( x, 0, z );
-			mesh.userData.square = spec.square;
-
-		} );
-
-		paintUI();
 		stage.view.azimuth = 2;
 		stage.view.elevation = 67;
 		stage.view.distance = 0.757;
@@ -242,12 +513,43 @@ async function main() {
 
 	} );
 
-	paintUI();
+	sync();
 
-	// Hooks for tools/check-interaction.mjs. A headless browser cannot produce a
-	// drag gesture, so the same code path is exposed directly.
-	window.__move = ( from, to ) => drag.moveTo( from, to );
+	// Hooks for tools/check-interaction.mjs and tools/check-rules.mjs. A headless
+	// browser cannot produce a drag gesture, so the same code paths are exposed
+	// directly — `__move` is the one the app itself calls.
+	window.__move = ( from, to ) => {
+
+		const result = act( from, to );
+		return { ok: result.ok, reason: result.reason };
+
+	};
+
+	window.__place = ( tone, type, square ) => window.__move( handRef( tone, type ), square );
+	window.__select = ( ref ) => { select( ref ); return pointer.hints(); };
+	window.__moves = ( ref ) => destinations( game, ref );
+	window.__hints = () => pointer.hints();
+	window.__marker = () => pointer.marker();
+	window.__carried = () => pointer.dragging()?.userData.id ?? null;
+	window.__visible = () => pieces.children.filter( ( m ) => m.visible ).map( ( m ) => m.userData.id );
+	window.__restart = () => document.getElementById( 'restart' ).click();
+
+	window.__state = () => ( {
+		turn: game.turn,
+		over: game.over,
+		winner: game.winner,
+		moveNo: game.moveNo,
+		selection,
+		hands: {
+			light: game.hands.light.map( ( p ) => p?.type ?? null ),
+			dark: game.hands.dark.map( ( p ) => p?.type ?? null ),
+		},
+	} );
+
+	window.__hands = () => window.__state().hands;
+
 	window.__view = ( id, value ) => ( value === undefined ? view.snapshot() : view.set( id, value ) );
+
 	window.__screen = ( square ) => {
 
 		const { col, row } = parseSquare( square );
@@ -260,7 +562,12 @@ async function main() {
 		};
 
 	};
-	window.__squares = () => pieces.children.map( ( m ) => ( {
+
+	// Only the pieces in play — a hidden mesh is a piece in a reserve, and
+	// `__hands()` is where those are.
+	window.__squares = () => pieces.children.filter( ( m ) => m.visible ).map( ( m ) => ( {
+		id: m.userData.id,
+		tone: m.userData.tone,
 		type: m.name,
 		square: m.userData.square,
 		x: + m.position.x.toFixed( 5 ),

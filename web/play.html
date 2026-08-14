@@ -85,17 +85,20 @@
 						</p>
 						<p class="turn-detail">
 							<span id="turn-side">Brown pieces</span><br />
-							Move a piece to continue.
+							<span id="turn-hint">Drag a piece out of the reserve, or tap one to see where it can go.</span>
 						</p>
 					</div>
 
+					<!-- The two reserves. Every piece starts here and none on the board, and
+					     a captured piece comes back to its own socket — so this is both the
+					     opening position and where a piece goes when it leaves the board. -->
 					<section class="roster">
-						<h2>YOUR PIECES</h2>
+						<h2>YOUR PIECES <span class="count" id="roster-you-count">4 IN HAND</span></h2>
 						<div class="roster-row" id="roster-you"></div>
 					</section>
 
 					<section class="roster">
-						<h2>OPPONENT</h2>
+						<h2>OPPONENT <span class="count" id="roster-them-count">4 IN HAND</span></h2>
 						<div class="roster-row" id="roster-them"></div>
 					</section>
 
