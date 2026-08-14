@@ -2,10 +2,12 @@ package ui
 
 import (
 	"fmt"
+	"net"
 	"slices"
 	"strings"
 
 	"chetactoe/internal/engine"
+	"chetactoe/internal/network"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -45,6 +47,8 @@ type Screen int
 const (
 	ScreenMenu Screen = iota
 	ScreenSelect
+	ScreenNetworkConnection
+	ScreenNetworkSelection
 	ScreenPlaying
 )
 
@@ -61,8 +65,10 @@ type Model struct {
 	handSel int
 	styles  Styles
 
-	menuCursor   int
-	selectCursor int
+	menuCursor       int
+	selectCursor     int
+	connectionCursor int
+	networkCusror    int
 }
 
 var menuOptions = []struct {
@@ -75,12 +81,25 @@ var menuOptions = []struct {
 }
 
 var selectOptions = []struct {
-	label string
-	player  engine.Player
+	label  string
+	player engine.Player
 }{
 	{"White", engine.White},
 	{"Black", engine.Black},
 }
+
+var connectionOptions = []struct {
+	label string
+	playerType network.NetworkPlayertype
+}{
+	{"Host", network.Host},
+	{"Peer", network.Peer},
+}
+
+var networkOptions = []struct {
+	label string
+	addr  *net.Addr
+}{}
 
 type SnapshotMsg engine.GameSnapshot
 
@@ -136,6 +155,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateMenu(msg)
 	case ScreenSelect:
 		return m.updateSelect(msg)
+	case ScreenNetworkSelection:
+		return m.updateConnection(msg)
+	case ScreenNetworkConnection:
+		return m.updateNetwork(msg)
 	case ScreenPlaying:
 		return m.updatePlayingScreen(msg)
 	}
@@ -160,13 +183,20 @@ func (m Model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case "enter", " ":
 		gameMode := menuOptions[m.menuCursor].mode
-		if gameMode == engine.GameModeBot {
+		switch gameMode {
+		case engine.GameModeBot:
 			return Model{
 				screen: ScreenSelect,
 				cursor: engine.Position{},
 				styles: defaultStyles(),
 			}, nil
+		case engine.GameModeNetwork:
+			return Model{
+				screen: ScreenNetworkSelection,
+				styles: defaultStyles(),
+			}, nil
 		}
+
 		return startGame(menuOptions[m.menuCursor].mode, nil)
 	}
 
@@ -191,6 +221,58 @@ func (m Model) updateSelect(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case "enter", " ":
 		return startGame(engine.GameModeBot, &selectOptions[m.selectCursor].player)
+	}
+
+	return m, nil
+}
+
+func (m Model) updateConnection(msg tea.Msg) (tea.Model, tea.Cmd) {
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+
+	switch keyMsg.String() {
+	case "ctrl+c", "q":
+		return m, tea.Quit
+
+	case "up", "k":
+		m.connectionCursor = clamp(m.connectionCursor-1, 0, len(selectOptions)-1)
+
+	case "down", "j":
+		m.connectionCursor = clamp(m.connectionCursor+1, 0, len(selectOptions)-1)
+
+	case "enter", " ":
+		// return startGame(engine.GameModeBot, &selectOptions[m.connectionCursor].player)
+		return Model{
+			screen: ScreenNetworkConnection,
+			styles: defaultStyles(),
+			networkCusror: m.connectionCursor,
+			cursor: engine.Position{},
+		}, nil
+	}
+
+	return m, nil
+}
+
+func (m Model) updateNetwork(msg tea.Msg) (tea.Model, tea.Cmd) {
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+
+	switch keyMsg.String() {
+	case "ctrl+c", "q":
+		return m, tea.Quit
+
+	case "up", "k":
+		m.networkCusror = clamp(m.networkCusror-1, 0, len(networkOptions)-1)
+
+	case "down", "j":
+		m.networkCusror = clamp(m.networkCusror+1, 0, len(networkOptions)-1)
+
+	case "enter", " ":
+		// return startGame(engine.GameModeBot, &selectOptions[m.networkCusror].player)
 	}
 
 	return m, nil
@@ -337,8 +419,12 @@ func (m Model) View() string {
 		return m.renderMenu()
 	case ScreenPlaying:
 		return m.renderGame()
+	case ScreenNetworkSelection:
+		return m.renderConnection()
 	case ScreenSelect:
 		return m.renderSelect()
+	case ScreenNetworkConnection:
+		return m.renderNetwork()
 	}
 	return m.renderMenu()
 }
@@ -374,6 +460,48 @@ func (m Model) renderSelect() string {
 	for i, opt := range selectOptions {
 		line := "  " + opt.label
 		if i == m.selectCursor {
+			line = m.styles.status.Render("▸ " + opt.label)
+		}
+		b.WriteString(line + "\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.styles.help.Render("↑/↓: choose    [enter] start    [q] quit"))
+
+	return b.String()
+}
+
+func (m Model) renderConnection() string {
+	var b strings.Builder
+
+	b.WriteString(m.styles.title.Render("CHETACTOE"))
+	b.WriteString("\n\n")
+	b.WriteString("Host or Peer:\n\n")
+
+	for i, opt := range connectionOptions {
+		line := "  " + opt.label
+		if i == m.connectionCursor {
+			line = m.styles.status.Render("▸ " + opt.label)
+		}
+		b.WriteString(line + "\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.styles.help.Render("↑/↓: choose    [enter] start    [q] quit"))
+
+	return b.String()
+}
+
+func (m Model) renderNetwork() string {
+	var b strings.Builder
+
+	b.WriteString(m.styles.title.Render("CHETACTOE"))
+	b.WriteString("\n\n")
+	b.WriteString("Select Devices:\n\n")
+
+	for i, opt := range networkOptions {
+		line := "  " + opt.label
+		if i == m.networkCusror {
 			line = m.styles.status.Render("▸ " + opt.label)
 		}
 		b.WriteString(line + "\n")
