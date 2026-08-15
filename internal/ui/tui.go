@@ -52,10 +52,10 @@ type Screen int
 
 const (
 	ScreenMenu Screen = iota
-	ScreenSelect            
-	ScreenNetworkConnection 
-	ScreenNetworkDiscovery  
-	ScreenNetworkWaiting    
+	ScreenSelect
+	ScreenNetworkConnection
+	ScreenNetworkDiscovery
+	ScreenNetworkWaiting
 	ScreenPlaying
 )
 
@@ -108,7 +108,6 @@ var connectionOptions = []struct {
 	{"Peer", network.Peer},
 }
 
-
 type SnapshotMsg engine.GameSnapshot
 
 type hostReadyMsg struct {
@@ -137,7 +136,6 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-
 func Run() {
 	p := tea.NewProgram(New())
 	if _, err := p.Run(); err != nil {
@@ -156,7 +154,6 @@ func (m Model) Init() tea.Cmd {
 	return nil
 }
 
-
 func (m Model) startLocalGame() (Model, tea.Cmd) {
 	move := make(chan engine.Action, 10)
 	snapshot := make(chan engine.GameSnapshot, 10)
@@ -164,7 +161,7 @@ func (m Model) startLocalGame() (Model, tea.Cmd) {
 
 	m.screen = ScreenPlaying
 	m.move, m.snapshot = move, snapshot
-	m.localPlayer = nil 
+	m.localPlayer = nil
 	return m, waitForSnapshot(snapshot)
 }
 
@@ -196,7 +193,6 @@ func (m Model) startNetworkGame(conn net.Conn, localPlayer engine.Player) (Model
 	m.networkSnapshot.Conn = conn
 	return m, waitForSnapshot(snapshot)
 }
-
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.screen {
@@ -382,9 +378,6 @@ func (m Model) updatePlayingScreen(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.snapshotState.IsOver {
 			return m.updateDone(msg)
 		}
-		if m.localPlayer != nil && m.snapshotState.CurrentPlayer != *m.localPlayer {
-			return m, nil
-		}
 		return m.updatePlaying(msg)
 	}
 
@@ -403,6 +396,8 @@ func (m Model) updateDone(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updatePlaying(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	myTurn := m.localPlayer == nil || m.snapshotState.CurrentPlayer == *m.localPlayer
+
 	switch msg.String() {
 	case "ctrl+c", "q":
 		return m, tea.Quit
@@ -436,14 +431,20 @@ func (m Model) updatePlaying(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "t", "tab":
-		if m.snapshotState.Source == nil {
+		if myTurn && m.snapshotState.Source == nil {
 			m.toggleHandMode()
 		}
 
 	case "enter", " ":
+		if !myTurn {
+			return m, nil
+		}
 		return m.handleConfirm()
 
 	case "esc":
+		if !myTurn {
+			return m, nil
+		}
 		if m.snapshotState.Source != nil {
 			m.move <- engine.Action{ActionType: engine.Cancel}
 		} else if m.mode == ModeHand {
@@ -451,7 +452,7 @@ func (m Model) updatePlaying(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "1", "2", "3", "4":
-		if m.snapshotState.Source == nil {
+		if myTurn && m.snapshotState.Source == nil {
 			idx := int(msg.String()[0] - '1')
 			m.handSel = idx
 			m.move <- engine.Action{
@@ -506,7 +507,6 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 
 	return m, nil
 }
-
 
 func (m Model) View() string {
 	switch m.screen {
@@ -805,7 +805,6 @@ func clamp(v, lo, hi int) int {
 
 	return v
 }
-
 
 func startHostCmd(udpPort, tcpPort int) tea.Cmd {
 	return func() tea.Msg {
