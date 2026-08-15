@@ -43,11 +43,5 @@ func ConnectToPeer(tcpPort int, addr *net.Addr) (net.Conn, error) {
 		return nil, err
 	}
 
-	message := "Hello from Go Client\n"
-	if _, err := conn.Write([]byte(message)); err != nil {
-		conn.Close()
-		return nil, err
-	}
-
 	return conn, nil
 }
