@@ -1,5 +1,7 @@
 package engine
 
+import "net"
+
 func StartLocalGame(act <-chan Action, snapshot chan<- GameSnapshot) {
 	game := NewGame()
 	snapshot <- game.Snapshot()
@@ -42,3 +44,15 @@ func StartBotGame(act <-chan Action, snapshot chan<- GameSnapshot, p Player) {
 	}
 
 }
+
+func StartNetworkGame(act <-chan Action, snapshot chan<- GameSnapshot, conn net.Conn, localPlayer Player) {
+	game := NewGame()
+	snapshot <- game.Snapshot()
+
+	for action := range act {
+		s := game.apply(action)
+		snapshot <- s
+	}
+
+}
+

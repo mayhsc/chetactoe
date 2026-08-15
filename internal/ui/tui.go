@@ -5,6 +5,7 @@ import (
 	"net"
 	"slices"
 	"strings"
+	"time"
 
 	"chetactoe/internal/engine"
 	"chetactoe/internal/network"
@@ -18,6 +19,11 @@ type Mode int
 const (
 	ModeBoard Mode = iota
 	ModeHand
+)
+
+const (
+	udpDiscoveryPort = 9876
+	tcpGamePort      = 4321
 )
 
 type Styles struct {
@@ -46,29 +52,35 @@ type Screen int
 
 const (
 	ScreenMenu Screen = iota
-	ScreenSelect
-	ScreenNetworkConnection
-	ScreenNetworkSelection
+	ScreenSelect            
+	ScreenNetworkConnection 
+	ScreenNetworkDiscovery  
+	ScreenNetworkWaiting    
 	ScreenPlaying
 )
 
 type Model struct {
 	screen Screen
+	styles Styles
 
 	move     chan<- engine.Action
 	snapshot <-chan engine.GameSnapshot
 
 	snapshotState engine.GameSnapshot
 
+	localPlayer *engine.Player
+
 	mode    Mode
 	cursor  engine.Position
 	handSel int
-	styles  Styles
 
-	menuCursor       int
-	selectCursor     int
+	menuCursor   int
+	selectCursor int
+
+	networkSnapshot  network.NetworkSnapshot
 	connectionCursor int
-	networkCusror    int
+	discoveryCursor  int
+	netErr           string
 }
 
 var menuOptions = []struct {
@@ -89,25 +101,42 @@ var selectOptions = []struct {
 }
 
 var connectionOptions = []struct {
-	label string
+	label      string
 	playerType network.NetworkPlayertype
 }{
 	{"Host", network.Host},
 	{"Peer", network.Peer},
 }
 
-var networkOptions = []struct {
-	label string
-	addr  *net.Addr
-}{}
 
 type SnapshotMsg engine.GameSnapshot
+
+type hostReadyMsg struct {
+	conn net.Conn
+	err  error
+}
+
+type devicesRefreshedMsg []*net.Addr
+
+type peerConnectedMsg struct {
+	conn net.Conn
+	err  error
+}
+
+type tickMsg time.Time
 
 func waitForSnapshot(snapshot <-chan engine.GameSnapshot) tea.Cmd {
 	return func() tea.Msg {
 		return SnapshotMsg(<-snapshot)
 	}
 }
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
 
 func Run() {
 	p := tea.NewProgram(New())
@@ -127,27 +156,47 @@ func (m Model) Init() tea.Cmd {
 	return nil
 }
 
-func startGame(mode engine.GameMode, p *engine.Player) (Model, tea.Cmd) {
+
+func (m Model) startLocalGame() (Model, tea.Cmd) {
+	move := make(chan engine.Action, 10)
+	snapshot := make(chan engine.GameSnapshot, 10)
+	go engine.StartLocalGame(move, snapshot)
+
+	m.screen = ScreenPlaying
+	m.move, m.snapshot = move, snapshot
+	m.localPlayer = nil 
+	return m, waitForSnapshot(snapshot)
+}
+
+func (m Model) startBotGame(playerSide engine.Player) (Model, tea.Cmd) {
+	botSide := engine.Black
+	if playerSide == engine.Black {
+		botSide = engine.White
+	}
+
+	move := make(chan engine.Action, 10)
+	snapshot := make(chan engine.GameSnapshot, 10)
+	go engine.StartBotGame(move, snapshot, botSide)
+
+	m.screen = ScreenPlaying
+	m.move, m.snapshot = move, snapshot
+	m.localPlayer = &playerSide
+	return m, waitForSnapshot(snapshot)
+}
+
+func (m Model) startNetworkGame(conn net.Conn, localPlayer engine.Player) (Model, tea.Cmd) {
 	move := make(chan engine.Action, 10)
 	snapshot := make(chan engine.GameSnapshot, 10)
 
-	switch mode {
-	case engine.GameModeLocal:
-		go engine.StartLocalGame(move, snapshot)
-	case engine.GameModeBot:
-		go engine.StartBotGame(move, snapshot, *p)
-	}
+	go engine.StartNetworkGame(move, snapshot, conn, localPlayer)
 
-	m := Model{
-		screen:   ScreenPlaying,
-		move:     move,
-		snapshot: snapshot,
-		cursor:   engine.Position{},
-		styles:   defaultStyles(),
-	}
-
+	m.screen = ScreenPlaying
+	m.move, m.snapshot = move, snapshot
+	m.localPlayer = &localPlayer
+	m.networkSnapshot.Conn = conn
 	return m, waitForSnapshot(snapshot)
 }
+
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.screen {
@@ -155,10 +204,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateMenu(msg)
 	case ScreenSelect:
 		return m.updateSelect(msg)
-	case ScreenNetworkSelection:
-		return m.updateConnection(msg)
 	case ScreenNetworkConnection:
-		return m.updateNetwork(msg)
+		return m.updateNetworkConnection(msg)
+	case ScreenNetworkDiscovery:
+		return m.updateNetworkDiscovery(msg)
+	case ScreenNetworkWaiting:
+		return m.updateNetworkWaiting(msg)
 	case ScreenPlaying:
 		return m.updatePlayingScreen(msg)
 	}
@@ -182,22 +233,16 @@ func (m Model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.menuCursor = clamp(m.menuCursor+1, 0, len(menuOptions)-1)
 
 	case "enter", " ":
-		gameMode := menuOptions[m.menuCursor].mode
-		switch gameMode {
+		switch menuOptions[m.menuCursor].mode {
 		case engine.GameModeBot:
-			return Model{
-				screen: ScreenSelect,
-				cursor: engine.Position{},
-				styles: defaultStyles(),
-			}, nil
+			m.screen = ScreenSelect
+			return m, nil
 		case engine.GameModeNetwork:
-			return Model{
-				screen: ScreenNetworkSelection,
-				styles: defaultStyles(),
-			}, nil
+			m.screen = ScreenNetworkConnection
+			return m, nil
+		default:
+			return m.startLocalGame()
 		}
-
-		return startGame(menuOptions[m.menuCursor].mode, nil)
 	}
 
 	return m, nil
@@ -212,21 +257,18 @@ func (m Model) updateSelect(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch keyMsg.String() {
 	case "ctrl+c", "q":
 		return m, tea.Quit
-
-	case "up", "k":
-		m.selectCursor = clamp(m.selectCursor-1, 0, len(selectOptions)-1)
-
-	case "down", "j":
-		m.selectCursor = clamp(m.selectCursor+1, 0, len(selectOptions)-1)
-
+	case "esc":
+		m.screen = ScreenMenu
+	case "up", "k", "down", "j", "left", "h", "right", "l":
+		m.selectCursor = 1 - m.selectCursor
 	case "enter", " ":
-		return startGame(engine.GameModeBot, &selectOptions[m.selectCursor].player)
+		return m.startBotGame(selectOptions[m.selectCursor].player)
 	}
 
 	return m, nil
 }
 
-func (m Model) updateConnection(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) updateNetworkConnection(msg tea.Msg) (tea.Model, tea.Cmd) {
 	keyMsg, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return m, nil
@@ -235,44 +277,96 @@ func (m Model) updateConnection(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch keyMsg.String() {
 	case "ctrl+c", "q":
 		return m, tea.Quit
-
-	case "up", "k":
-		m.connectionCursor = clamp(m.connectionCursor-1, 0, len(selectOptions)-1)
-
-	case "down", "j":
-		m.connectionCursor = clamp(m.connectionCursor+1, 0, len(selectOptions)-1)
-
+	case "esc":
+		m.screen = ScreenMenu
+	case "up", "k", "down", "j":
+		m.connectionCursor = 1 - m.connectionCursor
 	case "enter", " ":
-		// return startGame(engine.GameModeBot, &selectOptions[m.connectionCursor].player)
-		return Model{
-			screen: ScreenNetworkConnection,
-			styles: defaultStyles(),
-			networkCusror: m.connectionCursor,
-			cursor: engine.Position{},
-		}, nil
+		playerType := connectionOptions[m.connectionCursor].playerType
+		m.networkSnapshot.UDPPort = udpDiscoveryPort
+		m.networkSnapshot.TCPPort = tcpGamePort
+
+		if playerType == network.Host {
+			m.screen = ScreenNetworkWaiting
+			m.netErr = ""
+			return m, startHostCmd(m.networkSnapshot.UDPPort, m.networkSnapshot.TCPPort)
+		}
+
+		m.screen = ScreenNetworkDiscovery
+		m.netErr = ""
+		network.StartDiscoveryListener(m.networkSnapshot.UDPPort)
+		return m, tea.Batch(refreshDevicesCmd(m.networkSnapshot.UDPPort), tickCmd())
 	}
 
 	return m, nil
 }
 
-func (m Model) updateNetwork(msg tea.Msg) (tea.Model, tea.Cmd) {
-	keyMsg, ok := msg.(tea.KeyMsg)
-	if !ok {
+func (m Model) updateNetworkDiscovery(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tickMsg:
+		return m, tea.Batch(refreshDevicesCmd(m.networkSnapshot.UDPPort), tickCmd())
+
+	case devicesRefreshedMsg:
+		m.networkSnapshot.RemoteAddrs = msg
+		if m.discoveryCursor >= len(m.networkSnapshot.RemoteAddrs) {
+			m.discoveryCursor = 0
+		}
 		return m, nil
+
+	case peerConnectedMsg:
+		if msg.err != nil {
+			m.netErr = msg.err.Error()
+			return m, nil
+		}
+		return m.startNetworkGame(msg.conn, engine.Black)
+
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
+		case "esc":
+			m.screen = ScreenNetworkConnection
+			return m, nil
+		case "up", "k":
+			if n := len(m.networkSnapshot.RemoteAddrs); n > 0 {
+				m.discoveryCursor = clamp(m.discoveryCursor-1, 0, n-1)
+			}
+		case "down", "j":
+			if n := len(m.networkSnapshot.RemoteAddrs); n > 0 {
+				m.discoveryCursor = clamp(m.discoveryCursor+1, 0, n-1)
+			}
+		case "enter", " ":
+			if len(m.networkSnapshot.RemoteAddrs) == 0 {
+				m.netErr = "No devices discovered yet."
+				return m, nil
+			}
+			m.netErr = ""
+			addr := m.networkSnapshot.RemoteAddrs[m.discoveryCursor]
+			return m, connectToPeerCmd(m.networkSnapshot.TCPPort, addr)
+		}
 	}
 
-	switch keyMsg.String() {
-	case "ctrl+c", "q":
-		return m, tea.Quit
+	return m, nil
+}
 
-	case "up", "k":
-		m.networkCusror = clamp(m.networkCusror-1, 0, len(networkOptions)-1)
+func (m Model) updateNetworkWaiting(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case hostReadyMsg:
+		if msg.err != nil {
+			m.netErr = msg.err.Error()
+			m.screen = ScreenNetworkConnection
+			return m, nil
+		}
+		return m.startNetworkGame(msg.conn, engine.White)
 
-	case "down", "j":
-		m.networkCusror = clamp(m.networkCusror+1, 0, len(networkOptions)-1)
-
-	case "enter", " ":
-		// return startGame(engine.GameModeBot, &selectOptions[m.networkCusror].player)
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
+		case "esc":
+			m.screen = ScreenNetworkConnection
+			return m, nil
+		}
 	}
 
 	return m, nil
@@ -288,7 +382,7 @@ func (m Model) updatePlayingScreen(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.snapshotState.IsOver {
 			return m.updateDone(msg)
 		}
-		if m.snapshotState.CurrentPlayer != selectOptions[m.selectCursor].player {
+		if m.localPlayer != nil && m.snapshotState.CurrentPlayer != *m.localPlayer {
 			return m, nil
 		}
 		return m.updatePlaying(msg)
@@ -413,18 +507,21 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+
 func (m Model) View() string {
 	switch m.screen {
 	case ScreenMenu:
 		return m.renderMenu()
-	case ScreenPlaying:
-		return m.renderGame()
-	case ScreenNetworkSelection:
-		return m.renderConnection()
 	case ScreenSelect:
 		return m.renderSelect()
 	case ScreenNetworkConnection:
-		return m.renderNetwork()
+		return m.renderNetworkConnection()
+	case ScreenNetworkDiscovery:
+		return m.renderNetworkDiscovery()
+	case ScreenNetworkWaiting:
+		return m.renderNetworkWaiting()
+	case ScreenPlaying:
+		return m.renderGame()
 	}
 	return m.renderMenu()
 }
@@ -455,7 +552,7 @@ func (m Model) renderSelect() string {
 
 	b.WriteString(m.styles.title.Render("CHETACTOE"))
 	b.WriteString("\n\n")
-	b.WriteString("White or Black:\n\n")
+	b.WriteString("Choose your side:\n\n")
 
 	for i, opt := range selectOptions {
 		line := "  " + opt.label
@@ -466,17 +563,17 @@ func (m Model) renderSelect() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(m.styles.help.Render("↑/↓: choose    [enter] start    [q] quit"))
+	b.WriteString(m.styles.help.Render("↑/↓: choose    [enter] start    [esc] back    [q] quit"))
 
 	return b.String()
 }
 
-func (m Model) renderConnection() string {
+func (m Model) renderNetworkConnection() string {
 	var b strings.Builder
 
 	b.WriteString(m.styles.title.Render("CHETACTOE"))
 	b.WriteString("\n\n")
-	b.WriteString("Host or Peer:\n\n")
+	b.WriteString("Host or join?\n\n")
 
 	for i, opt := range connectionOptions {
 		line := "  " + opt.label
@@ -487,28 +584,52 @@ func (m Model) renderConnection() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(m.styles.help.Render("↑/↓: choose    [enter] start    [q] quit"))
+	b.WriteString(m.styles.help.Render("↑/↓: choose    [enter] confirm    [esc] back    [q] quit"))
 
 	return b.String()
 }
 
-func (m Model) renderNetwork() string {
+func (m Model) renderNetworkDiscovery() string {
 	var b strings.Builder
 
 	b.WriteString(m.styles.title.Render("CHETACTOE"))
 	b.WriteString("\n\n")
-	b.WriteString("Select Devices:\n\n")
+	b.WriteString("Discovered hosts:\n\n")
 
-	for i, opt := range networkOptions {
-		line := "  " + opt.label
-		if i == m.networkCusror {
-			line = m.styles.status.Render("▸ " + opt.label)
+	if len(m.networkSnapshot.RemoteAddrs) == 0 {
+		b.WriteString(m.styles.help.Render("  Searching...\n"))
+	}
+	for i, addr := range m.networkSnapshot.RemoteAddrs {
+		line := fmt.Sprintf("  [%d] %s", i, (*addr).String())
+		if i == m.discoveryCursor {
+			line = m.styles.status.Render("▸ " + strings.TrimPrefix(line, "  "))
 		}
 		b.WriteString(line + "\n")
 	}
 
+	if m.netErr != "" {
+		b.WriteString("\n" + m.styles.status.Render("▸ "+m.netErr) + "\n")
+	}
+
 	b.WriteString("\n")
-	b.WriteString(m.styles.help.Render("↑/↓: choose    [enter] start    [q] quit"))
+	b.WriteString(m.styles.help.Render("↑/↓: choose    [enter] connect    [esc] back    [q] quit"))
+
+	return b.String()
+}
+
+func (m Model) renderNetworkWaiting() string {
+	var b strings.Builder
+
+	b.WriteString(m.styles.title.Render("CHETACTOE"))
+	b.WriteString("\n\n")
+	b.WriteString("Waiting for a peer to connect...\n")
+
+	if m.netErr != "" {
+		b.WriteString("\n" + m.styles.status.Render("▸ "+m.netErr) + "\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.styles.help.Render("[esc] cancel    [q] quit"))
 
 	return b.String()
 }
@@ -547,6 +668,10 @@ func (m Model) renderGame() string {
 func (m Model) currentStatus() string {
 	if m.snapshotState.IsOver {
 		return fmt.Sprintf("Game over! %s won.", playerName(*m.snapshotState.Winner))
+	}
+
+	if m.localPlayer != nil && m.snapshotState.CurrentPlayer != *m.localPlayer {
+		return fmt.Sprintf("Waiting for %s...", playerName(m.snapshotState.CurrentPlayer))
 	}
 
 	if m.snapshotState.Source != nil {
@@ -679,4 +804,25 @@ func clamp(v, lo, hi int) int {
 	}
 
 	return v
+}
+
+
+func startHostCmd(udpPort, tcpPort int) tea.Cmd {
+	return func() tea.Msg {
+		conn, err := network.StartHost(udpPort, tcpPort)
+		return hostReadyMsg{conn: conn, err: err}
+	}
+}
+
+func refreshDevicesCmd(udpPort int) tea.Cmd {
+	return func() tea.Msg {
+		return devicesRefreshedMsg(network.DiscoverPeers(udpPort))
+	}
+}
+
+func connectToPeerCmd(tcpPort int, addr *net.Addr) tea.Cmd {
+	return func() tea.Msg {
+		conn, err := network.ConnectToPeer(tcpPort, addr)
+		return peerConnectedMsg{conn: conn, err: err}
+	}
 }
