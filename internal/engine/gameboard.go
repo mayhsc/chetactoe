@@ -27,6 +27,12 @@ func (gb *GameBaord) movePiece(oldPos Position, newPos Position, p Player) {
 		gb.board.pieces[r1][c1] = nil
 	}
 
+	if !toHand {
+		if captured := gb.board.pieces[r2][c2]; captured != nil {
+			gb.board.pieceCount[int(captured.Player)]--
+		}
+	}
+
 	piece.Position = newPos
 
 	if piece.PieceType == Pawn && !toHand {

@@ -35,56 +35,44 @@ func InitializePieces(player Player) [4]*Piece {
 	return pieces
 }
 
-func (pt PieceType) Moves(position Position, bd Board) []Position {
+func (pt PieceType) Moves(position Position, bd Board, player Player) []Position {
 	var moves []Position
-	var validMoves []Position
 
 	switch pt {
 	case Knight:
 		offsets := []Position{
-			{1, 2},
-			{2, 1},
-			{-1, 2},
-			{-2, 1},
-			{1, -2},
-			{2, -1},
-			{-1, -2},
-			{-2, -1},
+			{1, 2}, {2, 1}, {-1, 2}, {-2, 1},
+			{1, -2}, {2, -1}, {-1, -2}, {-2, -1},
 		}
 
-		addOffset(&moves, offsets, position)
-		for _, move := range moves {
-			if bd.pieces[move.Row][move.Col] == nil {
-				validMoves = append(validMoves, move)
+		var candidates []Position
+		addOffset(&candidates, offsets, position)
+
+		for _, move := range candidates {
+			target := bd.pieces[move.Row][move.Col]
+			if target == nil || target.Player != player {
+				moves = append(moves, move)
 			}
 		}
-		return validMoves
+		return moves
 
 	case Bishop:
 		directions := []Position{
-			{1, 1},
-			{-1, 1},
-			{1, -1},
-			{-1, -1},
+			{1, 1}, {-1, 1}, {1, -1}, {-1, -1},
 		}
-
-		addSlidingMoves(&moves, position, directions, bd)
+		addSlidingMoves(&moves, position, directions, bd, player)
 
 	case Rook:
 		directions := []Position{
-			{1, 0},
-			{-1, 0},
-			{0, 1},
-			{0, -1},
+			{1, 0}, {-1, 0}, {0, 1}, {0, -1},
 		}
-
-		addSlidingMoves(&moves, position, directions, bd)
+		addSlidingMoves(&moves, position, directions, bd, player)
 	}
 
 	return moves
 }
 
-func addSlidingMoves(moves *[]Position, position Position, directions []Position, bd Board) {
+func addSlidingMoves(moves *[]Position, position Position, directions []Position, bd Board, player Player) {
 	for _, dir := range directions {
 		current := position
 
@@ -98,12 +86,16 @@ func addSlidingMoves(moves *[]Position, position Position, directions []Position
 				break
 			}
 
-			if bd.pieces[current.Row][current.Col] == nil {
+			target := bd.pieces[current.Row][current.Col]
+
+			if target == nil {
 				*moves = append(*moves, current)
 				continue
 			}
 
-			*moves = append(*moves, current)
+			if target.Player != player {
+				*moves = append(*moves, current)
+			}
 			break
 		}
 	}
@@ -149,7 +141,7 @@ func (p Piece) ValidMoves(bd Board) []Position {
 		return p.pawnMoves(pos, bd)
 	}
 
-	return p.PieceType.Moves(pos, bd)
+	return p.PieceType.Moves(pos, bd, p.Player)
 }
 
 func (p Piece) pawnMoves(pos Position, bd Board) []Position {
