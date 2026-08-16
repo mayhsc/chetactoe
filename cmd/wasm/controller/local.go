@@ -6,13 +6,25 @@ import (
 	"syscall/js"
 )
 
-func StartLocalGame(this js.Value, args []js.Value) interface{} {
-	onSnapshot := args[0]
+func StartGame(this js.Value, args []js.Value) interface{} {
+	mode := args[0].String()
+	onSnapshot := args[1]
 
 	actChan := make(chan engine.Action, 100)
 	snapChan := make(chan engine.GameSnapshot, 100)
 
-	go engine.StartLocalGame(actChan, snapChan)
+	switch mode {
+	case "local":
+		go engine.StartLocalGame(actChan, snapChan)
+	case "bot-white":
+		go engine.StartBotGame(actChan, snapChan, engine.White)
+	case "bot-black":
+		go engine.StartBotGame(actChan, snapChan, engine.Black)
+	default:
+		return js.ValueOf(map[string]interface{}{
+			"error": "unknown game mode: " + mode,
+		})
+	}
 
 	go func() {
 		for snap := range snapChan {
@@ -25,14 +37,12 @@ func StartLocalGame(this js.Value, args []js.Value) interface{} {
 			jsJson := js.Global().Get("JSON").Call("stringify", args[0]).String()
 
 			act, err := mapActionToStruct(jsJson)
-
 			if err != nil {
 				return err.Error()
 			}
 
 			go func() {
 				actChan <- act
-
 			}()
 
 			return nil

@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	js.Global().Set("StartLocalGame", js.FuncOf(controller.StartLocalGame))
+	js.Global().Set("StartGame", js.FuncOf(controller.StartGame))
 
 	select {}
 }
