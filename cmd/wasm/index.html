@@ -41,5 +41,23 @@
     </div>
     <script src="wasm_exec.js"></script>
     <script src="app.js"></script>
+    <script>
+      ;(function () {
+        let lastModified = null
+        setInterval(async () => {
+          try {
+            const response = await fetch(window.location.href, {
+              method: "HEAD",
+              cache: "no-cache",
+            })
+            const currentModified = response.headers.get("Last-Modified")
+            if (lastModified && lastModified !== currentModified) {
+              window.location.reload()
+            }
+            lastModified = currentModified
+          } catch (e) {}
+        }, 1000)
+      })()
+    </script>
   </body>
 </html>
