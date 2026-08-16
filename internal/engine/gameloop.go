@@ -44,7 +44,7 @@ func (g *Game) apply(action Action) GameSnapshot {
 			validMoves = g.gb.getValidPlacements()
 		} else {
 			piece := g.gb.pieceAt(source)
-			if piece != nil && piece.Player() == g.p {
+			if piece != nil && piece.Player == g.p {
 				validMoves = piece.ValidMoves(g.gb.board)
 			}
 

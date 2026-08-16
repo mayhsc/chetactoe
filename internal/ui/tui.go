@@ -784,7 +784,7 @@ func glyphFor(p *engine.Piece) string {
 		{"♙", "♘", "♗", "♖"},
 	}
 
-	return labels[int(p.Player())][int(p.Type())]
+	return labels[int(p.Player)][int(p.Type())]
 }
 
 func playerName(p engine.Player) string {

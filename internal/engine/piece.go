@@ -14,13 +14,13 @@ func CreatePiece(ptype PieceType, player Player) *Piece {
 	}
 
 	return &Piece{
-		pieceType: ptype,
-		player:    player,
-		position: Position{
+		PieceType: ptype,
+		Player:    player,
+		Position: Position{
 			Col: index,
 			Row: int(ptype),
 		},
-		direction: None,
+		Direction: None,
 	}
 }
 
@@ -135,24 +135,23 @@ func contains(moves []Position, pos Position) bool {
 	return slices.Contains(moves, pos)
 }
 
-func (p *Piece) Type() PieceType { return p.pieceType }
-func (p *Piece) Player() Player  { return p.player }
-func (p *Piece) Pos() Position   { return p.position }
+func (p *Piece) Type() PieceType { return p.PieceType }
+func (p *Piece) Pos() Position   { return p.Position }
 
 func (p Piece) ValidMoves(bd Board) []Position {
-	pos := p.position
+	pos := p.Position
 
-	if p.pieceType == Pawn {
+	if p.PieceType == Pawn {
 		return p.pawnMoves(pos, bd)
 	}
 
-	return p.pieceType.Moves(pos, bd)
+	return p.PieceType.Moves(pos, bd)
 }
 
 func (p Piece) pawnMoves(pos Position, bd Board) []Position {
 	var moves []Position
 
-	switch p.direction {
+	switch p.Direction {
 	case Up:
 		next := Position{
 			Row: pos.Row + 1,

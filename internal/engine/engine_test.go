@@ -5,8 +5,8 @@ import (
 )
 
 func TestIsWinningState(t *testing.T) {
-	pWhite := &Piece{player: White}
-	pBlack := &Piece{player: Black}
+	pWhite := &Piece{Player: White}
+	pBlack := &Piece{Player: Black}
 
 	tests := []struct {
 		name     string
@@ -110,8 +110,8 @@ func TestGetAllPossibleMoves(t *testing.T) {
 
 	pawnPiece := gb.hand[0].Pieces[0]
 	gb.hand[0].Pieces[0] = nil
-	pawnPiece.position = Position{Row: 1, Col: 1}
-	pawnPiece.direction = Up
+	pawnPiece.Position = Position{Row: 1, Col: 1}
+	pawnPiece.Direction = Up
 	gb.board.pieces[1][1] = pawnPiece
 
 	whiteMovesAfterDrop := gb.getAllPossibleMoves(White)

@@ -27,15 +27,15 @@ const (
 )
 
 type Position struct {
-	Row int
-	Col int
+	Row int `json:"row"`
+	Col int `json:"col"`
 }
 
 type Piece struct {
-	pieceType PieceType
-	position  Position
-	player    Player
-	direction Direction
+	PieceType PieceType `json:"pieceType"`
+	Position  Position  `json:"position"`
+	Player    Player    `json:"player"`
+	Direction Direction `json:"direction"`
 }
 
 type Board struct {
@@ -53,19 +53,19 @@ type GameBaord struct {
 }
 
 type Move struct {
-	Source      Position
-	Destination Position
+	Source      Position `json:"source"`
+	Destination Position `json:"destination"`
 }
 
 type GameSnapshot struct {
-	Board         [4][4]*Piece
-	WhiteHand     [4]*Piece
-	BlackHand     [4]*Piece
-	CurrentPlayer Player
-	ValidMoves    []Position
-	Source        *Position
-	Winner        *Player
-	IsOver        bool
+	Board         [4][4]*Piece `json:"board"`
+	WhiteHand     [4]*Piece    `json:"whiteHand"`
+	BlackHand     [4]*Piece    `json:"blackHand"`
+	CurrentPlayer Player       `json:"currentPlayer"`
+	ValidMoves    []Position   `json:"validMoves"`
+	Source        *Position    `json:"source"`
+	Winner        *Player      `json:"winenr"`
+	IsOver        bool         `json:"isOver"`
 }
 
 type ActionType int
@@ -77,8 +77,8 @@ const (
 )
 
 type Action struct {
-	Move       Move
-	ActionType ActionType
+	Move       Move       `json:"move"`
+	ActionType ActionType `json:"actionType"`
 }
 
 type GameMode int

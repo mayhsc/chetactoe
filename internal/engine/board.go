@@ -6,14 +6,13 @@ func newBoard() Board {
 	}
 }
 
-
 func (bd *Board) isWinningState(p Player) bool {
 	pieces := bd.pieces
 	leftDiagonal, rightDiagonal := true, true
 
 	matchesPlayer := func(row, col int) bool {
 		piece := pieces[row][col]
-		return piece != nil && piece.player == p
+		return piece != nil && piece.Player == p
 	}
 
 	for i := range 4 {
