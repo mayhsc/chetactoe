@@ -19,7 +19,55 @@ body {
 h1 {
   color: #ff6fa0;
   letter-spacing: 4px;
-  margin-bottom: 8px;
+  margin-bottom: 24px;
+}
+
+.screen.hidden {
+  display: none;
+}
+
+.prompt {
+  color: #b8c4d9;
+  margin-bottom: 20px;
+}
+
+.menu-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.menu-options button {
+  background: #1e2030;
+  color: #e4e7eb;
+  border: 2px solid #2a2d40;
+  padding: 14px;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.menu-options button:hover {
+  background: #2a2d40;
+  border-color: #ff6fa0;
+}
+
+.back-btn {
+  margin-top: 24px;
+  background: none;
+  color: #5c6b85;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  text-decoration: underline;
+}
+
+.back-btn:hover {
+  color: #b8c4d9;
 }
 
 #status {
@@ -46,7 +94,7 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
+  font-size: 32px;
   background: #1e2030;
   border-radius: 6px;
   cursor: pointer;
@@ -85,7 +133,7 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 28px;
   background: #1e2030;
   border-radius: 6px;
   cursor: pointer;
@@ -113,23 +161,6 @@ h1 {
   color: #7d8aa0;
 }
 
-#winner {
-  color: #ff6fa0;
-  font-size: 20px;
-  font-weight: 700;
-  margin: 12px 0;
-}
-
 button {
-  background: #2a2d40;
-  color: #e4e7eb;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-button:hover {
-  background: #383c54;
+  font-family: inherit;
 }

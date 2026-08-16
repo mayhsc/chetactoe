@@ -1,6 +1,6 @@
 const ActionType = {
-  Select: 1,
   Execute: 0,
+  Select: 1,
   Cancel: 2,
 };
 
@@ -14,16 +14,16 @@ const PieceGlyphs = {
   black: ["♟", "♞", "♝", "♜"],
 };
 
+let snapshot = null;
+let controller = null;
+let go = null;
+let wasmReady = null;
+
 function pieceGlyph(piece) {
   if (!piece) return "";
   const set = piece.player === Player.White ? PieceGlyphs.white : PieceGlyphs.black;
   return set[piece.pieceType] || "?";
 }
-
-let snapshot = null;
-let controller = null;
-let selectedHandSlot = null;
-
 
 function pieceClass(piece) {
   if (!piece) return "";
@@ -57,7 +57,6 @@ function onCellClick(row, col) {
         destination: { row, col },
       },
     });
-    selectedHandSlot = null;
     return;
   }
 
@@ -75,7 +74,6 @@ function onHandSlotClick(player, idx, piece) {
   if (player !== snapshot.currentPlayer) return;
   if (!piece) return;
 
-  selectedHandSlot = idx;
   sendAction({
     actionType: ActionType.Select,
     move: {
@@ -175,9 +173,55 @@ function onSnapshot(jsonStr) {
   render();
 }
 
-const go = new Go();
-WebAssembly.instantiateStreaming(fetch("./bin/chetactoe.wasm"), go.importObject).then((result) => {
-  go.run(result.instance);
-  controller = StartLocalGame(onSnapshot);
+function showScreen(id) {
+  document.querySelectorAll(".screen").forEach((el) => el.classList.add("hidden"));
+  document.getElementById(id).classList.remove("hidden");
+}
+
+async function ensureWasmLoaded() {
+  if (wasmReady) return wasmReady;
+
+  go = new Go();
+  wasmReady = WebAssembly.instantiateStreaming(fetch("./bin/chetactoe.wasm"), go.importObject).then(
+    (result) => {
+      go.run(result.instance);
+    }
+  );
+  return wasmReady;
+}
+
+async function beginGame(mode) {
+  await ensureWasmLoaded();
+  snapshot = null;
+  controller = StartGame(mode, onSnapshot);
+  showScreen("screen-game");
+}
+
+document.querySelectorAll("#screen-menu [data-mode]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const mode = btn.dataset.mode;
+    if (mode === "local") {
+      beginGame("local");
+    } else if (mode === "bot") {
+      showScreen("screen-side");
+    } else if (mode === "network") {
+      showScreen("screen-network");
+    }
+  });
 });
 
+document.querySelectorAll("#screen-side [data-side]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    beginGame("bot-" + btn.dataset.side);
+  });
+});
+
+document.getElementById("side-back").addEventListener("click", () => {
+  showScreen("screen-menu");
+});
+
+document.getElementById("network-back").addEventListener("click", () => {
+  showScreen("screen-menu");
+});
+
+showScreen("screen-menu");
