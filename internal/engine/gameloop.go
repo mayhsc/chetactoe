@@ -30,6 +30,9 @@ func (g *Game) apply(action Action) GameSnapshot {
 
 	switch action.ActionType {
 	case Execute:
+		if !g.isValidSource(source) {
+			break
+		}
 		g.gb.movePiece(source, destination, g.p)
 		isWinningState = g.gb.board.isWinningState(g.p)
 		if !isWinningState {
@@ -40,16 +43,15 @@ func (g *Game) apply(action Action) GameSnapshot {
 		}
 
 	case Select:
-		if source.Col < 0 {
-			validMoves = g.gb.getValidPlacements()
-		} else {
-			piece := g.gb.pieceAt(source)
-			if piece != nil && piece.Player == g.p {
+		if g.isValidSource(source) {
+			if source.Col < 0 {
+				validMoves = g.gb.getValidPlacements()
+			} else {
+				piece := g.gb.pieceAt(source)
 				validMoves = piece.ValidMoves(g.gb.board)
 			}
-
+			newSource = &source
 		}
-		newSource = &source
 
 	case Cancel:
 		newSource = nil
@@ -65,6 +67,15 @@ func (g *Game) apply(action Action) GameSnapshot {
 		IsOver:        isWinningState,
 		Source:        newSource,
 	}
+}
+
+func (g *Game) isValidSource(pos Position) bool {
+	if pos.Col < 0 {
+		hand := g.gb.handPieces(g.p)
+		return pos.Row >= 0 && pos.Row < len(hand) && hand[pos.Row] != nil
+	}
+	piece := g.gb.pieceAt(pos)
+	return piece != nil && piece.Player == g.p
 }
 
 func switchTurn(turn *Player) {

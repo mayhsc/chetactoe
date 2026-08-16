@@ -64,7 +64,7 @@ type GameSnapshot struct {
 	CurrentPlayer Player       `json:"currentPlayer"`
 	ValidMoves    []Position   `json:"validMoves"`
 	Source        *Position    `json:"source"`
-	Winner        *Player      `json:"winenr"`
+	Winner        *Player      `json:"winner"`
 	IsOver        bool         `json:"isOver"`
 }
 
