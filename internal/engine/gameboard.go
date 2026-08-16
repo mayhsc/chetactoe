@@ -31,8 +31,10 @@ func (gb *GameBaord) movePiece(oldPos Position, newPos Position, p Player) {
 
 	if toHand {
 		gb.hand[i].Pieces[r2] = piece
+		gb.board.pieceCount[i]--
 	} else {
 		gb.board.pieces[r2][c2] = piece
+		gb.board.pieceCount[i]++
 	}
 }
 

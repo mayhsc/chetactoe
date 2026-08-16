@@ -139,6 +139,11 @@ func (p *Piece) Type() PieceType { return p.PieceType }
 func (p *Piece) Pos() Position   { return p.Position }
 
 func (p Piece) ValidMoves(bd Board) []Position {
+	player := int(p.Player)
+	if bd.pieceCount[player] < 3 {
+		return nil
+	}
+
 	pos := p.Position
 
 	if p.PieceType == Pawn {
