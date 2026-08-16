@@ -12,7 +12,6 @@ func CreatePiece(ptype PieceType, player Player) *Piece {
 	} else {
 		index = -2
 	}
-
 	return &Piece{
 		PieceType: ptype,
 		Player:    player,
@@ -154,63 +153,32 @@ func (p Piece) ValidMoves(bd Board) []Position {
 }
 
 func (p Piece) pawnMoves(pos Position, bd Board) []Position {
+	var rowStep int
+	switch p.Direction {
+	case Down:
+		rowStep = 1
+	case Up:
+		rowStep = -1
+	default:
+		return nil
+	}
+
 	var moves []Position
 
-	switch p.Direction {
-	case Up:
-		next := Position{
-			Row: pos.Row + 1,
-			Col: pos.Col,
-		}
-		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
-			moves = append(moves, next)
-		}
+	forward := Position{Row: pos.Row + rowStep, Col: pos.Col}
+	if validPosition(forward) && bd.pieces[forward.Row][forward.Col] == nil {
+		moves = append(moves, forward)
+	}
 
-	case Down:
-		next := Position{
-			Row: pos.Row - 1,
-			Col: pos.Col,
+	for _, colOffset := range []int{-1, 1} {
+		diag := Position{Row: pos.Row + rowStep, Col: pos.Col + colOffset}
+		if !validPosition(diag) {
+			continue
 		}
-		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
-			moves = append(moves, next)
+		target := bd.pieces[diag.Row][diag.Col]
+		if target != nil && target.Player != p.Player {
+			moves = append(moves, diag)
 		}
-
-	case Right:
-		next := Position{
-			Row: pos.Row,
-			Col: pos.Col + 1,
-		}
-		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
-			moves = append(moves, next)
-		}
-
-	case Left:
-		next := Position{
-			Row: pos.Row,
-			Col: pos.Col - 1,
-		}
-		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
-			moves = append(moves, next)
-		}
-
-	case None:
-		offsets := []Position{
-			{Row: -1, Col: 0},
-			{Row: 0, Col: -1},
-			{Row: 1, Col: 0},
-			{Row: 0, Col: 1},
-		}
-
-		addOffset(&moves, offsets, pos)
-
-		var validMoves []Position
-		for _, move := range moves {
-			if bd.pieces[move.Row][move.Col] == nil {
-				validMoves = append(validMoves, move)
-			}
-		}
-
-		return validMoves
 	}
 
 	return moves

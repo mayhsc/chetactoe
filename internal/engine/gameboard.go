@@ -29,13 +29,40 @@ func (gb *GameBaord) movePiece(oldPos Position, newPos Position, p Player) {
 
 	piece.Position = newPos
 
+	if piece.PieceType == Pawn && !toHand {
+		if d, atEdge := edgeDirection(newPos.Row); atEdge {
+			piece.Direction = d
+		} else if inHand {
+			piece.Direction = initialPawnDirection(p)
+		}
+	}
+
 	if toHand {
 		gb.hand[i].Pieces[r2] = piece
-		gb.board.pieceCount[i]--
 	} else {
 		gb.board.pieces[r2][c2] = piece
-		gb.board.pieceCount[i]++
+		if inHand {
+			gb.board.pieceCount[i]++
+		}
 	}
+}
+
+func edgeDirection(row int) (Direction, bool) {
+	switch row {
+	case 0:
+		return Down, true
+	case 3:
+		return Up, true
+	default:
+		return None, false
+	}
+}
+
+func initialPawnDirection(p Player) Direction {
+	if p == White {
+		return Down
+	}
+	return Up
 }
 
 func (gb *GameBaord) hasWon(p Player) bool {
