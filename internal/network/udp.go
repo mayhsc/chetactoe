@@ -3,68 +3,75 @@ package network
 import (
 	"fmt"
 	"net"
-	"slices"
 	"sync"
 	"time"
 )
 
-var (
-	remoteAddrs []*net.UDPAddr
-	addrsMu     sync.Mutex
-)
-
-// const port = 2000
-const udpConnectionSignal = "HELLO_CHETACTOE"
-
-func DiscoverDevices(listenPort int, tcpPort int) {
-
-	listenAddr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf("224.0.0.1:%d", listenPort))
-	conn, err := net.ListenMulticastUDP("udp", nil, listenAddr)
-
-	if err != nil {
-		fmt.Printf("Error listening: %v\n", err)
-		return
-	}
-
-	defer conn.Close()
-
-	// go boradcastPresence(broadcst)
-
-	fmt.Println("Listening for other players...")
-	buf := make([]byte, 1024)
-	// myIPs := getLocalIP()
-
-	for {
-		n, remoteAddr, err := conn.ReadFromUDP(buf)
-
-		if err != nil {
-			continue
-		}
-
-		// if myIPs[remoteAddr.IP.String()] {
-		// 	continue
-		// }
-
-		message := string(buf[:n])
-
-		if message == udpConnectionSignal {
-			addrsMu.Lock()
-
-			exists := slices.ContainsFunc(remoteAddrs, func(addr *net.UDPAddr) bool {
-				return addr.IP.Equal(remoteAddr.IP) && addr.Port == remoteAddr.Port
-			})
-
-			if !exists {
-				remoteAddrs = append(remoteAddrs, remoteAddr)
-				fmt.Printf("Peer discovered at IP: %s\n", remoteAddr.IP.String())
-			}
-
-			addrsMu.Unlock()
-		}
-	}
+type discoveredHost struct {
+	addr    net.Addr
+	lastSeen time.Time
 }
 
-func BoradcastPresence(broadcastPort int) {
+var (
+	discoveryMu sync.Mutex
+	discovered  = map[string]discoveredHost{} 
+)
+
+const udpConnectionSignal = "HELLO_CHETACTOE"
+
+
+func StartDiscoveryListener(udpPort int) error {
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: udpPort})
+	if err != nil {
+		return fmt.Errorf("listening for discovery broadcasts: %w", err)
+	}
+
+	go func() {
+		defer conn.Close()
+		buf := make([]byte, 256)
+
+		for {
+			n, addr, err := conn.ReadFromUDP(buf)
+			if err != nil {
+				return 
+			}
+
+			if _, err := fmt.Sscanf(string(buf[:n]), udpConnectionSignal); err != nil {
+				continue
+			}
+
+			discoveryMu.Lock()
+			discovered[addr.String()] = discoveredHost{
+				addr:     addr,
+				lastSeen: time.Now(),
+			}
+			discoveryMu.Unlock()
+		}
+	}()
+
+	return nil
+}
+
+func DiscoverPeers(udpPort int) []*net.Addr {
+	discoveryMu.Lock()
+	defer discoveryMu.Unlock()
+
+	var out []*net.Addr
+	cutoff := time.Now().Add(-5 * time.Second)
+
+	for key, host := range discovered {
+		if host.lastSeen.Before(cutoff) {
+			delete(discovered, key) 
+			continue
+		}
+		addr := host.addr
+		out = append(out, &addr)
+	}
+
+	return out
+}
+
+func BoradcastPresence(broadcastPort int, stop <- chan struct{}) {
 	broadcastAddr, _ := net.ResolveUDPAddr(
 		"udp",
 		fmt.Sprintf(
@@ -76,36 +83,21 @@ func BoradcastPresence(broadcastPort int) {
 	conn, err := net.DialUDP("udp", nil, broadcastAddr)
 
 	if err != nil {
-		fmt.Printf("Error broadcasting: %v\n", err)
 		return
 	}
 
 	defer conn.Close()
 
+	msg := []byte(udpConnectionSignal)
+	ticker := time.NewTicker(time.Second)
+
 	for {
-		_, _ = conn.Write([]byte(udpConnectionSignal))
-		time.Sleep(2 * time.Second)
-	}
-
-}
-
-func getLocalIP() map[string]bool {
-	ips := make(map[string]bool)
-
-	addrs, err := net.InterfaceAddrs()
-
-	if err != nil {
-		return ips
-	}
-
-	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
-				ips[ipnet.IP.String()] = true
-			}
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			conn.Write(msg)
 		}
 	}
 
-	return ips
 }
-

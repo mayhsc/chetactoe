@@ -1,51 +1,47 @@
 package network
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"net"
 )
 
-func StartTcpServer(port int, connChan chan net.Conn) {
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+func StartHost(udpPort, tcpPort int) (net.Conn, error) {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", tcpPort))
 
 	if err != nil {
-		log.Fatal("Error starting TCP")
-		return
+		return nil, err
 	}
+	defer listener.Close()
 
-	fmt.Printf("TCP Server started on port %d\n", port)
+	stop := make(chan struct{})
+	go BoradcastPresence(udpPort, stop)
+	defer close(stop)
 
-	// for {
 	conn, err := listener.Accept()
 
 	if err != nil {
-		fmt.Println("Connection error: ", err)
+		return nil, err
 	}
-	// 	go handleClient(conn)
-	// }
-	fmt.Printf("Client disconnected: %s\n", conn.RemoteAddr().String())
 
-	connChan <- conn
+	return conn, nil
 }
 
-func establishTcpConnection(target *net.TCPAddr) {
+func ConnectToPeer(tcpPort int, addr *net.Addr) (net.Conn, error) {
+	udpAddr, ok := (*addr).(*net.UDPAddr)
+	if !ok {
+		return nil, errors.New("expected a UDP address from discovery")
+	}
+
+	target := &net.TCPAddr{
+		IP:   udpAddr.IP,
+		Port: tcpPort,
+	}
+
 	conn, err := net.DialTCP("tcp", nil, target)
-
 	if err != nil {
-		fmt.Println("Error connecting to server:", err)
-		return
+		return nil, err
 	}
 
-	message := "Hello from Go Client\n"
-	fmt.Printf("Sending: %s", message)
-	_, err = conn.Write([]byte(message))
-
-	if err != nil {
-		fmt.Println("Error writing to server:", err)
-		return
-	}
-
-	StartGamePrompt(conn)
-
+	return conn, nil
 }
