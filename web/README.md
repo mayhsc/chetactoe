@@ -13,11 +13,41 @@ This is the web client for [`mayhsc/chetactoe`](https://github.com/mayhsc/chetac
 ```bash
 npm install
 npm run dev          # http://localhost:5178
+npm run dev:lan      # https://<your-mac>.local:5178 — reachable from a phone
 ```
 
 **WebGPU is required.** `WoodNodeMaterial` builds its pore structure from a
 `TSL.wgslFn`, so there is no WebGL fallback — the page shows an explanatory message
 instead. Chrome/Edge 113+ or Safari 26+.
+
+### Seeing it on another device — and why `npm run dev` alone will not
+
+**WebGPU is only handed to a secure context.** `https://` is one, and
+`http://localhost` gets a special exemption — but `http://192.168.1.x`, the address
+another device on your network has to use, is **not**. So `vite --host` gets you a
+page that loads and then refuses to draw, with `navigator.gpu` undefined, on a
+browser that supports WebGPU perfectly well. Nothing about the browser is wrong.
+
+`npm run dev:lan` serves the same files over HTTPS instead. `tools/dev-cert.mjs`
+makes a self-signed certificate covering `localhost`, this machine's Bonjour name
+and its current IPv4 addresses, into a gitignored `.certs/`. The browser warns once
+and lets you continue, which is all a secure context needs; to silence it on this
+Mac:
+
+```bash
+node tools/dev-cert.mjs --trust      # adds it to your login keychain
+```
+
+Use the **`.local` name**, not the IP: `https://Salils-MacBook-Air.local:5178`. The
+IP changes when your router hands out a new lease and the Bonjour name does not, so
+that is the URL worth bookmarking. The certificate is remade automatically whenever
+this machine's addresses change.
+
+**Do not reach for `chrome://flags` → "Insecure origins treated as secure".** It
+works until it doesn't, in three ways that all present as "it turned itself off
+again": Chrome drops flags once they pass their expiry milestone, resetting or
+syncing a profile clears them, and the entry names one exact origin, so a new DHCP
+lease silently stops matching it.
 
 ## The board
 
@@ -26,9 +56,17 @@ instead. Chrome/Edge 113+ or Safari 26+.
 `/play.html` is a **playable game**, rules and all. The board starts empty with four
 pieces per side in the reserves beside it. **Drag** a piece straight out of the reserve
 onto a square, or out of one square onto another — or **tap** it and tap where it should
-go; the square under the pointer is marked as you move either way. Four of your own
-pieces in a line wins. The camera's rotate / zoom / pan axes each have a toggle plus a
-master lock, in the cluster at the board's bottom-left.
+go; the square under the pointer is marked as you move either way.
+
+**Three of your pieces in a line wins**, but you cannot get there by dropping the third
+one in: a placement may never be the move that completes a line, so it has to be walked
+in from somewhere. Placements have to touch a piece you already have out, a captured
+piece sits out a turn before it can be played again, and the second player may **take
+the first player's position** instead of answering it. The rules and the numbers behind
+them are in the [root README](../README.md#why-these-rules).
+
+The camera's rotate / zoom / pan axes each have a toggle plus a master lock, in the
+cluster at the board's bottom-left.
 
 ![The pieces](renders/pieces.png)
 
@@ -37,12 +75,13 @@ master lock, in the cluster at the board's bottom-left.
 | page | what |
 | --- | --- |
 | `/` | the landing page: a 4×4 grid whose central 2×2 is the live board |
+| `/rules.html` | the rules, with a little board per rule — linked from the landing page's 03 cell |
 | `/play.html` | the game: board, coordinate labels, reserves, move history, light/dark |
 | `/board.html` | the board framed exactly like the reference photograph, for verification |
 | `/pieces.html` | the four pieces in a row, framed like their reference |
 | `/compare.html` | fade / wipe / difference the board render against its reference |
 
-`/` and `/play.html` take `?theme=dark`; `/board.html` takes `?pieces=0`; `/pieces.html`
+`/`, `/rules.html` and `/play.html` take `?theme=dark`; `/board.html` takes `?pieces=0`; `/pieces.html`
 takes `?tone=dark`, `?piece=knight` and `?bg=none`. Every page accepts camera overrides
 — `?fov=` `?elev=` `?az=` `?dist=` `?y=` — and `?w=`/`?h=` to pin the canvas size for
 capture. Drag to orbit on every page but `/`, where the camera answers the pointer
@@ -73,6 +112,7 @@ in this repo** — `reference/` is gitignored. `/compare.html`, `tools/analyse.m
 | `src/interaction.js` | pointer: pick, carry, tap-to-select, destination markers, snap |
 | `src/viewcontrols.js` | rotate / zoom / pan toggles and the view lock |
 | `src/home.js` + `src/home.css` | the landing page |
+| `src/rules.css` + `src/rules.js` | the rules page — borrows app.css for palette and topbar |
 | `src/app.js` + `src/app.css` | the game shell |
 | `src/main.js` | the reference-framed board page |
 | `src/pieces-view.js` | the pieces page |
@@ -114,6 +154,25 @@ The four numbered sections and the menu open one dialog whose content is swapped
 five panels. The piece in the craft cell is the real model, rendered by
 `tools/make-icons.sh` at four times icon size.
 
+### The rules page
+
+`rules.html` is a document, not an instrument, so it carries no 3D at all — the piece
+icons are the same pre-rendered PNGs the panel uses, and each rule gets a small 4×4
+board drawn as a CSS grid, checkered like the real one and marked in the game's own
+colours: green where a piece may go, amber for a capture, a soft wash for a square the
+rules refuse.
+
+It loads `app.css` for the palette, the type and the topbar rather than restating them,
+which is the whole reason it looks like the rest of the site — and it is also the one
+trap in the file. `app.css` already owns a `.dot`: the 9px turn indicator, `border-radius:
+50%`. A board cell with `class="dot"` inherited that and every legal square rendered as a
+circle with its corners cut off. The markers are `data-mark` attributes now, so a class
+name the shell adds later cannot reach into the diagrams.
+
+The diagrams were checked against the real move generator rather than drawn by eye —
+`destinations()` from `src/game.js` for a piece on B2, converted to grid cells — because
+two of the four were wrong the first time.
+
 ### The shell
 
 `play.html` is a static grid — topbar, stage, panel — around a canvas that the 3D
@@ -149,9 +208,18 @@ the height of a whole grid cell rather than 46px tall.
 is what lets `tools/check-rules.mjs` run them in plain node and what keeps the shell
 from growing a second opinion about what is legal. It mirrors `internal/engine` in the
 Go module on purpose: same hand of four, same capture-back-to-hand, same win length,
-same select / execute / cancel. The two are checked against the same cases.
+same select / execute / cancel, same `RuleSet`. The two are checked against the same
+cases, and both ship the classic ruleset alongside the current one so a variant can be
+played without a patch:
 
-Four things about the shell are worth knowing.
+```js
+import { createGame, CLASSIC_RULES, DEFAULT_RULES } from './game.js';
+
+const game = createGame();                  // the measured rules
+const old = createGame( CLASSIC_RULES );    // four in a line, drop anywhere
+```
+
+Five things about the shell are worth knowing.
 
 - **Nothing starts on the board.** All eight pieces are built once at startup and all
   eight begin hidden, because all eight begin in the reserves. A mesh with no square is
@@ -168,6 +236,10 @@ Four things about the shell are worth knowing.
 - **Every move goes through `act()`**, whether it came from a drag, a tap or a test
   hook, and `act()` asks the rules. An illegal move is refused in one place, and the
   board can never show something the rules did not allow.
+- **The swap changes the timber under the pieces, and nothing else.** A mesh is chosen
+  by `tone-type`, so when the pie rule hands every piece to the other player, `sync()`
+  simply moves the light-wood rook to where the dark-wood rook was standing. The
+  position is identical and the colours have traded, which is exactly what happened.
 
 **One gesture with two endings, everywhere.** Press a piece and move, and you are
 dragging it; press and let go, and you have selected it. That holds for a piece in play
@@ -424,6 +496,9 @@ On the shell:
   a rule changed in one has to be changed in the other; the two check suites are what
   catch it. Once the client talks to the engine over a socket the JS copy becomes the
   offline path only — see "Wiring the web client to the engine" in the root README.
+- **The client has no self-play harness.** `go run ./cmd/sim` measures the Go engine,
+  and the JS mirror is only checked for agreement case by case. A rule that measures
+  well in Go and is mistyped in JS would pass both suites unless a case covers it.
 - **The reserves are drawn as icons in the panel, not as pieces on the table.** Real
   meshes parked outside the board would need the camera re-framed, and the framing is
   matched to a photograph.
@@ -439,7 +514,7 @@ reader/writer built on `node:zlib`).
 
 ```bash
 node tools/check-squares.mjs                     # square <-> position round-trip
-node tools/check-rules.mjs                       # the rules, in plain node
+node tools/check-rules.mjs                       # the rules, in plain node — both rulesets
 node tools/check-interaction.mjs                 # the game + view lock, in a real browser
 node tools/check-home.mjs                        # landing page: grid, clipping, sheet, theme
 node tools/fit-camera.mjs                        # board camera + margin from the reference

@@ -16,20 +16,71 @@ it into play is a move.
 
 On your turn you do exactly one of two things:
 
-- **place** a piece from your hand on any empty square, or
+- **place** a piece from your hand, or
 - **move** a piece you already have in play.
 
 Pieces move as they do in chess, on a 4×4 board. A pawn has no facing — it steps one
 square in any of the four orthogonal directions. Moving onto an enemy piece **captures**
-it, and a captured piece **goes back to its owner's hand**, in the slot it came from,
-ready to be placed again. Nothing is ever taken out of the game: the eight pieces are
-always either on the board or in a hand.
+it, and a captured piece **goes back to its owner's hand**, in the slot it came from.
+Nothing is ever taken out of the game: the eight pieces are always either on the board
+or in a hand.
 
-**You win with `WinLength` of your own pieces consecutively in a row, a column or a
-diagonal.** `WinLength` is 4 (`internal/engine/types.go`), so on a 4×4 board that
-means all four of your pieces in one line — change the constant to 3 for much shorter
-games. A player who has nothing in hand and no legal move is a draw, which is the only
-draw there is.
+**Three of your pieces in a row, a column or a diagonal wins.** Four rules shape how
+you get there, and every one of them is there because self-play said the game did not
+work without it:
+
+- **A placement may not be the move that completes a line.** You have to walk a piece
+  in, which takes a turn longer and is visible to your opponent before it lands.
+- **A placement must touch a piece you already have in play**, once you have any. The
+  reserve builds a position rather than parachuting into one.
+- **A captured piece sits out a turn** before it can be placed again, so taking
+  something buys tempo rather than nothing at all.
+- **The second player may take the first player's position** instead of replying to
+  it — once, on their first turn. This is the pie rule, and it is what stops moving
+  first from being decisive.
+
+A game nobody is winning ends: the same position three times is a **draw**, so is
+hitting the move limit, and a player with no legal move at all **loses**.
+
+## Why these rules
+
+The first version of this game did not work, and it took a self-play harness to see
+why. Four in a line with four pieces and free re-placement is unreachable — the target
+takes four turns to build and one capture to undo — so **58% of games between competent
+players were unfinished after 150 moves each.** Lowering the target to three fixed
+that and broke it the other way: with a piece droppable on any square, making a line is
+a race, and **the first player won 92%** of games against a depth-4 searcher.
+
+What fixed it was restricting the drops, and then handing the second player the swap:
+
+```
+$ go run ./cmd/sim
+
+  classic          W 53% / B 44%  draws  4%  avg plies  59.7  first-player share 55%
+  default          W 65% / B 35%  draws  0%  avg plies  12.8  first-player share 65%
+  no-restriction   W 78% / B 21%  draws  0%  avg plies   8.2  first-player share 79%
+
+$ go run ./cmd/sim -openings
+
+  strongest opening         80%   (what the opener gets with no swap rule)
+  most even opening         50%   — and it is all they can play, because anything
+                                    better than even is taken off them
+```
+
+The harness is `cmd/sim` and it is the point: a rule change produces a number instead
+of an argument.
+
+```bash
+go run ./cmd/sim                          # every variant, side by side
+go run ./cmd/sim -variant classic -n 500  # one of them, harder
+go run ./cmd/sim -depth 4 -n 60           # against a real searcher
+go run ./cmd/sim -openings                # score every first move
+go run ./cmd/sim -check                   # CI guard: does the shipped ruleset still play?
+```
+
+`-check` holds the shipped rules to the targets that matter — over 98% of games
+finishing, a sane length, a first player who is not simply winning, and a deeper
+search beating a shallower one — and exits non-zero if a rule change breaks one.
 
 ## The engine
 
@@ -37,21 +88,30 @@ draw there is.
 act := make(chan engine.Action)
 snapshots := make(chan engine.GameSnapshot)
 
-go engine.StartGame(act, snapshots)
+go engine.StartGame(act, snapshots)                            // the measured rules
+go engine.StartGameWithRules(engine.ClassicRules(), act, snap) // or any other set
 
 opening := <-snapshots        // empty board, four pieces in each hand
 act <- engine.Action{ ... }   // one action
 next := <-snapshots           // the answer
 ```
 
+**The rules are data**, not constants: `RuleSet` carries the win length, the drop
+restrictions, the capture cooldown, the pie rule and the two termination limits, and it
+travels in every snapshot so a client draws the game it is actually playing rather than
+the one it was compiled against. `DefaultRules()` is what came out of the measurements
+above; `ClassicRules()` is the original design, kept because it is what any new variant
+has to beat.
+
 `StartGame` owns one game and is the only thing that touches its state. Every action
 gets exactly one snapshot back, so a client never has to guess whether its move landed.
 Close `act` to end the game; `snapshots` closes after it.
 
-**Actions** are `Select`, `Execute` and `Cancel`. `Select` is a read — it answers with
+**Actions** are `Select`, `Execute`, `Cancel` and `Swap`. `Select` is a read — it answers with
 the squares that source may go to and changes nothing; `Execute` performs a move;
-`Cancel` clears the selection. A refused `Execute` comes back with `Rejected` set and
-the game untouched.
+`Cancel` clears the selection; `Swap` is the pie rule and is legal only on the second
+player's first turn, which the snapshot flags with `CanSwap`. A refused action comes
+back with `Rejected` set and the game untouched.
 
 **Positions** address the board and both hands with one type. `Row`/`Col` inside 0–3 is
 a square; a **negative column is a hand** — `-1` White's, `-2` Black's — with `Row` as
@@ -74,9 +134,12 @@ type GameSnapshot struct {
 	LastMove      *Move       // the move just executed
 	Captured      *Piece      // which piece it sent back to a hand
 	MoveNo        int
-	Rejected      string      // why an Execute was refused; the game is unchanged
+	Rejected      string      // why an action was refused; the game is unchanged
+	CanSwap       bool        // the pie rule is open this turn
 	Winner        *Player     // nil with IsOver means a draw
 	IsOver        bool
+	Ending        Ending      // won, repetition, length, or no-move
+	Rules         RuleSet     // the game being played, not the one you compiled
 }
 ```
 
@@ -86,6 +149,7 @@ that hard-codes `2 == bishop` breaks silently the day a piece type is inserted.
 
 ```bash
 go test ./internal/engine/     # the rules and the protocol
+go run ./cmd/sim -check        # and whether they still add up to a game
 ```
 
 ## Wiring the web client to the engine
@@ -127,3 +191,11 @@ unchanged, with the host running `StartGame`.
 1) Drop UDP scanning and broadcasting after TCP connection has been established
 2) Serve the game over a WebSocket so the engine, not the browser, is the referee
    (see above)
+3) The four pieces still do not earn their differences on a 4×4: the rook moves 6 ways
+   from every square, the pawn and knight 3, and **the bishop can only ever reach 8 of
+   the 16 squares**, which reads as a bug to anyone playing it. Giving the pawn a facing
+   and letting the bishop change colour with a one-square step is the next ruleset
+   change worth measuring.
+4) Games run short — about 13 plies against a depth-2 searcher. If they should be
+   longer, the lever is a 5×5 board with four in a line, which is a bigger change than
+   it sounds: the board geometry and the camera fit are both matched to 4×4.

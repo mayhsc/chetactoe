@@ -2,27 +2,43 @@ package engine
 
 import "fmt"
 
-// StartGame owns one game. It reads actions from act and answers every one with
-// a snapshot on snapshot, so the engine's state never leaves this goroutine and a
-// client only ever holds a copy.
+// StartGame owns one game under the measured ruleset. See StartGameWithRules.
+func StartGame(act <-chan Action, snapshot chan<- GameSnapshot) {
+	StartGameWithRules(DefaultRules(), act, snapshot)
+}
+
+// StartGameWithRules owns one game. It reads actions from act and answers every
+// one with a snapshot on snapshot, so the engine's state never leaves this
+// goroutine and a client only ever holds a copy.
 //
 // It sends the opening position before reading anything, which is what puts all
 // eight pieces in the two hands and none on the board.
 //
 // It returns when act is closed, and closes snapshot on the way out.
-func StartGame(act <-chan Action, snapshot chan<- GameSnapshot) {
+func StartGameWithRules(rules RuleSet, act <-chan Action, snapshot chan<- GameSnapshot) {
 	defer close(snapshot)
 
-	gb := InitializeGameBoard()
+	gb := NewGameBoard(rules)
 	player := White
 
 	var (
 		moveNo int
 		winner *Player
 		isOver bool
+		ending Ending
 	)
 
-	snapshot <- gb.Snapshot(player)
+	// How often each position has come up. Three sightings of one position means
+	// neither side is making progress, and the game says so rather than going on
+	// until somebody closes the tab.
+	seen := map[string]int{gb.positionKey(player): 1}
+
+	// The pie rule is open on exactly one turn: the second player's first.
+	canSwap := func() bool { return rules.SwapRule && moveNo == 1 }
+
+	opening := gb.Snapshot(player)
+	opening.CanSwap = canSwap()
+	snapshot <- opening
 
 	for action := range act {
 		source, destination := action.Move.Source, action.Move.Destination
@@ -31,6 +47,8 @@ func StartGame(act <-chan Action, snapshot chan<- GameSnapshot) {
 		snap.MoveNo = moveNo
 		snap.Winner = winner
 		snap.IsOver = isOver
+		snap.Ending = ending
+		snap.CanSwap = canSwap()
 
 		// Once the game is over the position is final; an action against it is
 		// answered with that same position rather than changing it.
@@ -77,23 +95,62 @@ func StartGame(act <-chan Action, snapshot chan<- GameSnapshot) {
 			snap.Captured = captured
 
 			switch {
-			case gb.board.isWinningState(player):
+			case gb.board.isWinningState(player, rules.WinLength):
 				// Copied, because player keeps moving after this.
 				won := player
-				winner, isOver = &won, true
-
-			case !gb.hasLegalAction(opponent(player)):
-				// Every piece of theirs is in play and boxed in: a draw, so no
-				// winner is set.
-				isOver = true
+				winner, isOver, ending = &won, true, WonByLine
 
 			default:
+				// Cool the mover's own pieces at the *end* of their turn, not the
+				// start of the next one. Ticking on entry would decrement a piece
+				// captured a moment ago before its owner had a turn to miss, so
+				// "sits out one turn" would mean sitting out nothing at all.
+				gb.tick(player)
 				switchTurn(&player)
+
+				key := gb.positionKey(player)
+				seen[key]++
+
+				switch {
+				case !gb.hasLegalAction(player):
+					// Boxed in with nothing to place: the player to move has run
+					// out of game, and loses it.
+					won := opponent(player)
+					winner, isOver, ending = &won, true, LostWithNoMove
+
+				case rules.RepetitionLimit > 0 && seen[key] >= rules.RepetitionLimit:
+					isOver, ending = true, DrawnByRepetition
+
+				case rules.MaxPlies > 0 && moveNo >= rules.MaxPlies:
+					isOver, ending = true, DrawnByLength
+				}
 			}
 
 			snap.CurrentPlayer = player
 			snap.Winner = winner
 			snap.IsOver = isOver
+			snap.Ending = ending
+			snap.CanSwap = canSwap()
+
+		case Swap:
+			if !canSwap() {
+				snap.Rejected = "the position can only be taken on the second player's first turn"
+				break
+			}
+
+			gb.swapSides()
+			moveNo++
+
+			snap = gb.Snapshot(player)
+			snap.MoveNo = moveNo
+			snap.Swapped = true
+
+			gb.tick(player)
+			switchTurn(&player)
+			seen[gb.positionKey(player)]++
+
+			snap.CurrentPlayer = player
+			snap.CanSwap = canSwap()
 
 		case Cancel:
 			// Nothing selected, nothing moved — the snapshot with no Source is

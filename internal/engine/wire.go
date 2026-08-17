@@ -20,7 +20,7 @@ var (
 	pieceTypeNames = [...]string{"pawn", "knight", "bishop", "rook"}
 	playerNames    = [...]string{"white", "black"}
 	directionNames = [...]string{"up", "down", "left", "right", "none"}
-	actionNames    = [...]string{"select", "execute", "cancel"}
+	actionNames    = [...]string{"select", "execute", "cancel", "swap"}
 )
 
 func name(names []string, i int) string {
@@ -39,6 +39,16 @@ func index(names []string, want string) (int, bool) {
 	}
 
 	return 0, false
+}
+
+var endingNames = [...]string{"playing", "won", "repetition", "length", "no-move"}
+
+func (e Ending) String() string { return name(endingNames[:], int(e)) }
+
+func (e Ending) MarshalJSON() ([]byte, error) { return json.Marshal(e.String()) }
+
+func (e *Ending) UnmarshalJSON(data []byte) error {
+	return unmarshalEnum(data, endingNames[:], "ending", (*int)(e))
 }
 
 func (t PieceType) String() string { return name(pieceTypeNames[:], int(t)) }

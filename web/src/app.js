@@ -5,9 +5,10 @@ import { createStage } from './stage.js';
 import { buildBoard, cellCentre, parseSquare, BOARD, FILES, RANKS } from './scene.js';
 import { createDragController } from './interaction.js';
 import { createViewControls } from './viewcontrols.js';
+import { whyNoWebGPU } from './webgpu-why.js';
 import {
-	TYPES, apply, createGame, destinations, handCount, handRef, isHandRef,
-	other, parseHandRef, pieceAt, reset, winningLine,
+	ENDINGS, TYPES, apply, canSwap, createGame, destinations, handCount, handRef,
+	isHandRef, other, parseHandRef, pieceAt, reset, swap, winningLine,
 } from './game.js';
 
 const THEME_KEY = 'chetactoe-theme';
@@ -42,6 +43,7 @@ let theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
 if ( WebGPU.isAvailable() === false ) {
 
 	document.getElementById( 'unsupported' ).classList.add( 'show' );
+	document.getElementById( 'unsupported-why' ).textContent = whyNoWebGPU();
 
 } else {
 
@@ -81,28 +83,47 @@ function paintReserve( id, tone ) {
 	host.replaceChildren( ...TYPES.map( ( type ) => {
 
 		const ref = handRef( tone, type );
-		const inHand = pieceAt( game, ref ) !== null;
+		const piece = pieceAt( game, ref );
+		const cooling = piece !== null && piece.cooldown > 0;
 		const yours = tone === game.turn && ! game.over;
 
 		const slot = document.createElement( 'button' );
 		slot.type = 'button';
 		slot.className = 'slot';
 		slot.dataset.ref = ref;
-		slot.dataset.state = inHand ? 'hand' : 'board';
-		slot.disabled = ! inHand || ! yours;
+		slot.dataset.state = piece === null ? 'board' : cooling ? 'cooling' : 'hand';
+		slot.disabled = piece === null || cooling || ! yours;
 		slot.setAttribute( 'aria-pressed', String( selection === ref ) );
-		slot.title = inHand
-			? ( yours ? `Place the ${type}` : `${type} in reserve` )
-			: `${type} is in play`;
+
+		slot.title = piece === null
+			? `${type} is in play`
+			: cooling
+				? `${type} was just taken — back in ${piece.cooldown} turn${piece.cooldown === 1 ? '' : 's'}`
+				: yours ? `Place the ${type}` : `${type} in reserve`;
 
 		if ( selection === ref ) slot.classList.add( 'selected' );
 
 		slot.append( img( tone, type, `${tone} ${type}` ) );
+
+		// A captured piece is not gone and not ready — the number says when.
+		if ( cooling ) {
+
+			const badge = document.createElement( 'span' );
+			badge.className = 'cooldown';
+			badge.textContent = String( piece.cooldown );
+			slot.append( badge );
+
+		}
+
 		return slot;
 
 	} ) );
 
-	document.getElementById( `${id}-count` ).textContent = `${handCount( game, tone )} IN HAND`;
+	const ready = game.hands[ tone ].filter( ( p ) => p && p.cooldown === 0 ).length;
+	const held = handCount( game, tone );
+
+	document.getElementById( `${id}-count` ).textContent =
+		held === ready ? `${held} IN HAND` : `${held} IN HAND, ${ready} READY`;
 
 }
 
@@ -120,6 +141,15 @@ function paintHistory() {
 
 		const move = document.createElement( 'span' );
 		move.className = 'move';
+
+		if ( m.swapped ) {
+
+			move.textContent = 'TOOK THE POSITION';
+			li.append( no, document.createElement( 'span' ), move );
+			return li;
+
+		}
+
 		move.innerHTML = `${label( m )}<span class="arrow">→</span>${m.to}`;
 
 		if ( m.captured ) {
@@ -158,8 +188,15 @@ function paintTurn() {
 			: game.winner === YOU ? 'YOU WIN' : 'OPPONENT WINS';
 
 		dot.classList.toggle( 'them', game.winner === THEM );
-		side.textContent = game.winner === null ? 'Nobody can move' : setName( game.winner );
-		hint.textContent = 'Restart to play again.';
+
+		side.textContent = game.winner === null ? 'Neither side' : setName( game.winner );
+
+		hint.textContent = {
+			[ ENDINGS.won ]: `${game.rules.winLength} in a line. Restart to play again.`,
+			[ ENDINGS.repetition ]: 'The same position three times — nobody was getting anywhere.',
+			[ ENDINGS.length ]: `${game.rules.maxPlies} moves with no result.`,
+			[ ENDINGS.noMove ]: 'The other side had no legal move left.',
+		}[ game.ending ] ?? 'Restart to play again.';
 
 	} else {
 
@@ -167,15 +204,20 @@ function paintTurn() {
 		dot.classList.toggle( 'them', ! yourTurn );
 		side.textContent = setName( tone );
 
-		hint.textContent = selection === null
-			? handCount( game, tone ) > 0
-				? 'Drag a piece out of the reserve, or tap one to see where it can go.'
-				: 'Drag a piece, or tap one to see where it can go.'
-			: isHandRef( selection )
-				? 'Drop it on a marked square, or tap one. Escape cancels.'
-				: 'Drag it, or tap a marked square. Escape cancels.';
+		hint.textContent = canSwap( game )
+			? 'Reply, or take their position instead — the first move is worth having.'
+			: selection === null
+				? handCount( game, tone ) > 0
+					? 'Drag a piece out of the reserve, or tap one to see where it can go.'
+					: 'Drag a piece, or tap one to see where it can go.'
+				: isHandRef( selection )
+					? 'Drop it on a marked square, or tap one. Escape cancels.'
+					: 'Drag it, or tap a marked square. Escape cancels.';
 
 	}
+
+	// The pie rule is open on exactly one turn, so the button exists only then.
+	document.getElementById( 'swap' ).hidden = ! canSwap( game );
 
 	document.querySelector( '.app' ).classList.toggle( 'over', game.over );
 
@@ -445,6 +487,19 @@ async function main() {
 
 	}
 
+	document.getElementById( 'swap' ).addEventListener( 'click', () => {
+
+		if ( ! swap( game ).ok ) return;
+
+		selection = null;
+
+		// Every piece changed hands, so the meshes do too: a piece's mesh is chosen
+		// by `tone-type`, and sync() moves whichever mesh now owns each square. The
+		// timber under the piece changes colour, which is exactly what happened.
+		sync();
+
+	} );
+
 	// Escape clears a selection, because clicking somewhere harmless to get rid of one
 	// is not obvious and on a board every square looks like it might do something.
 	window.addEventListener( 'keydown', ( event ) => {
@@ -534,12 +589,20 @@ async function main() {
 	window.__visible = () => pieces.children.filter( ( m ) => m.visible ).map( ( m ) => m.userData.id );
 	window.__restart = () => document.getElementById( 'restart' ).click();
 
+	window.__swap = () => { const r = swap( game ); if ( r.ok ) { selection = null; sync(); } return r; };
+
 	window.__state = () => ( {
 		turn: game.turn,
 		over: game.over,
 		winner: game.winner,
+		ending: game.ending,
+		canSwap: canSwap( game ),
 		moveNo: game.moveNo,
 		selection,
+		cooldowns: {
+			light: game.hands.light.map( ( p ) => ( p ? p.cooldown : null ) ),
+			dark: game.hands.dark.map( ( p ) => ( p ? p.cooldown : null ) ),
+		},
 		hands: {
 			light: game.hands.light.map( ( p ) => p?.type ?? null ),
 			dark: game.hands.dark.map( ( p ) => p?.type ?? null ),

@@ -44,6 +44,71 @@ func (b *Board) emptySquares() []Position {
 	return squares
 }
 
+// winningLine is the run itself, for a client that wants to draw it.
+func (b *Board) winningLine(player Player, length int) []Position {
+	directions := []Position{
+		{Row: 0, Col: 1},
+		{Row: 1, Col: 0},
+		{Row: 1, Col: 1},
+		{Row: -1, Col: 1},
+	}
+
+	for r := range Cells {
+		for c := range Cells {
+			for _, dir := range directions {
+				start := Position{Row: r, Col: c}
+				if !b.hasRun(start, dir, player, length) {
+					continue
+				}
+
+				line := make([]Position, 0, length)
+				pos := start
+
+				for range length {
+					line = append(line, pos)
+					pos = Position{Row: pos.Row + dir.Row, Col: pos.Col + dir.Col}
+				}
+
+				return line
+			}
+		}
+	}
+
+	return nil
+}
+
+// touches reports whether a square is next to one of the player's own pieces,
+// including diagonally — the test behind DropMustTouchOwn.
+func (b *Board) touches(player Player, pos Position) bool {
+	for dr := -1; dr <= 1; dr++ {
+		for dc := -1; dc <= 1; dc++ {
+			if dr == 0 && dc == 0 {
+				continue
+			}
+
+			near := Position{Row: pos.Row + dr, Col: pos.Col + dc}
+			if piece := b.pieceAt(near); piece != nil && piece.player == player {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// has reports whether the player has anything in play at all.
+func (b *Board) has(player Player) bool {
+	for r := range Cells {
+		for c := range Cells {
+			if piece := b.pieces[r][c]; piece != nil && piece.player == player {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // copyPieces is the board half of a snapshot: same layout, detached pieces, so
 // the caller cannot be handed a piece the engine is still moving around.
 func (b *Board) copyPieces() [Cells][Cells]*Piece {
@@ -61,9 +126,9 @@ func (b *Board) copyPieces() [Cells][Cells]*Piece {
 	return out
 }
 
-// isWinningState reports whether the player has WinLength of their own pieces
+// isWinningState reports whether the player has `length` of their own pieces
 // consecutively in a row, a column, or either diagonal direction.
-func (b *Board) isWinningState(player Player) bool {
+func (b *Board) isWinningState(player Player, length int) bool {
 	// East, south, south-east, north-east. Their opposites would only find the
 	// same runs from the other end, since every start square is tried.
 	directions := []Position{
@@ -76,7 +141,7 @@ func (b *Board) isWinningState(player Player) bool {
 	for r := range Cells {
 		for c := range Cells {
 			for _, dir := range directions {
-				if b.hasRun(Position{Row: r, Col: c}, dir, player) {
+				if b.hasRun(Position{Row: r, Col: c}, dir, player, length) {
 					return true
 				}
 			}
@@ -86,10 +151,10 @@ func (b *Board) isWinningState(player Player) bool {
 	return false
 }
 
-func (b *Board) hasRun(start Position, dir Position, player Player) bool {
+func (b *Board) hasRun(start Position, dir Position, player Player, length int) bool {
 	pos := start
 
-	for range WinLength {
+	for range length {
 		piece := b.pieceAt(pos)
 		if piece == nil || piece.player != player {
 			return false

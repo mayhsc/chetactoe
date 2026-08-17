@@ -5,10 +5,18 @@ import (
 	"slices"
 )
 
+// InitializeGameBoard starts a game under the measured ruleset.
 func InitializeGameBoard() GameBoard {
+	return NewGameBoard(DefaultRules())
+}
+
+// NewGameBoard starts a game under any ruleset — which is how the harness plays
+// a hundred variants against each other without a patch.
+func NewGameBoard(rules RuleSet) GameBoard {
 	return GameBoard{
 		board: NewBoard(),
 		hand:  InitializeHand(),
+		rules: rules,
 	}
 }
 
@@ -30,10 +38,45 @@ func (gb *GameBoard) pieceAt(pos Position) *Piece {
 // PieceAt exposes pieceAt to callers outside the engine.
 func (gb *GameBoard) PieceAt(pos Position) *Piece { return gb.pieceAt(pos) }
 
-// getValidPlacements is where a piece from the hand may go: any empty square.
-// It does not depend on which piece is being placed.
-func (gb *GameBoard) getValidPlacements() []Position {
-	return gb.board.emptySquares()
+// getValidPlacements is where a piece from the hand may go.
+//
+// Any empty square, less whatever the ruleset takes away: a square that would
+// complete a line (NoWinByDrop), and any square not touching a piece the player
+// already has in play (DropMustTouchOwn). Those two restrictions are what stop
+// the game being a race to drop four pieces in a row, which is what it measured
+// as without them.
+func (gb *GameBoard) getValidPlacements(piece *Piece, p Player) []Position {
+	var out []Position
+
+	mustTouch := gb.rules.DropMustTouchOwn && gb.board.has(p)
+
+	for _, square := range gb.board.emptySquares() {
+		if mustTouch && !gb.board.touches(p, square) {
+			continue
+		}
+
+		if gb.rules.NoWinByDrop && gb.dropWouldWin(piece, square, p) {
+			continue
+		}
+
+		out = append(out, square)
+	}
+
+	return out
+}
+
+// dropWouldWin asks whether putting this piece here finishes a line, by trying
+// it on the board and taking it straight back off. Cheaper than reasoning about
+// which lines the square belongs to, and it cannot disagree with the win check.
+func (gb *GameBoard) dropWouldWin(piece *Piece, square Position, p Player) bool {
+	probe := *piece
+	probe.position = square
+
+	gb.board.setPiece(square, &probe)
+	won := gb.board.isWinningState(p, gb.rules.WinLength)
+	gb.board.setPiece(square, nil)
+
+	return won
 }
 
 // validDestinations is the single source of truth for what a player may do with
@@ -49,11 +92,15 @@ func (gb *GameBoard) validDestinations(source Position, p Player) []Position {
 			return nil
 		}
 
-		if gb.hand[int(p)].Pieces[source.Row] == nil {
+		piece := gb.hand[int(p)].Pieces[source.Row]
+
+		// An empty slot, or one holding a piece still sitting out the turn it was
+		// captured on.
+		if piece == nil || !piece.Ready() {
 			return nil
 		}
 
-		return gb.getValidPlacements()
+		return gb.getValidPlacements(piece, p)
 	}
 
 	piece := gb.board.pieceAt(source)
@@ -94,12 +141,88 @@ func (gb *GameBoard) MovePiece(source Position, destination Position, p Player) 
 	captured := gb.board.pieceAt(destination)
 	if captured != nil {
 		gb.returnToHand(captured)
+		captured.cooldown = gb.rules.CaptureCooldown
 	}
 
 	piece.position = destination
+	piece.cooldown = 0
 	gb.board.setPiece(destination, piece)
 
 	return captured, nil
+}
+
+// swapSides hands every piece to the other player — the pie rule, applied.
+//
+// The seats do not move: whoever was playing White still is, but the position
+// they just built now belongs to their opponent and they are the one to move
+// with nothing on the board. That is the whole point of the rule, and it is why
+// it needs no judgement about how much a first move is worth.
+func (gb *GameBoard) swapSides() {
+	for r := range Cells {
+		for c := range Cells {
+			if piece := gb.board.pieces[r][c]; piece != nil {
+				piece.player = opponent(piece.player)
+			}
+		}
+	}
+
+	gb.hand[0].Pieces, gb.hand[1].Pieces = gb.hand[1].Pieces, gb.hand[0].Pieces
+
+	for i := range 2 {
+		for _, piece := range gb.hand[i].Pieces {
+			if piece == nil {
+				continue
+			}
+
+			piece.player = Player(i)
+			piece.position = Position{Row: int(piece.pieceType), Col: HandCol(Player(i))}
+		}
+	}
+}
+
+// tick counts down the player's captured pieces at the start of their turn.
+func (gb *GameBoard) tick(p Player) {
+	for _, piece := range gb.hand[int(p)].Pieces {
+		if piece != nil && piece.cooldown > 0 {
+			piece.cooldown--
+		}
+	}
+}
+
+// positionKey identifies a position for repetition detection: what stands where,
+// what is waiting in each hand, and whose turn it is. Two positions with the same
+// key offer the same game, so seeing one three times means nobody is making
+// progress.
+func (gb *GameBoard) positionKey(toMove Player) string {
+	key := make([]byte, 0, 32)
+
+	for r := range Cells {
+		for c := range Cells {
+			piece := gb.board.pieces[r][c]
+			if piece == nil {
+				key = append(key, '.')
+				continue
+			}
+
+			key = append(key, byte('a'+int(piece.pieceType)+HandSize*int(piece.player)))
+		}
+	}
+
+	for _, hand := range gb.hand {
+		key = append(key, '|')
+		for _, piece := range hand.Pieces {
+			switch {
+			case piece == nil:
+				key = append(key, '.')
+			case piece.Ready():
+				key = append(key, 'r')
+			default:
+				key = append(key, byte('0'+piece.cooldown))
+			}
+		}
+	}
+
+	return string(append(key, '|', byte('0'+int(toMove))))
 }
 
 // returnToHand puts a captured piece back in its owner's hand, ready to be
@@ -128,10 +251,12 @@ func (gb *GameBoard) handPieces(p Player) [HandSize]*Piece {
 	return out
 }
 
-// hasLegalAction reports whether the player has anything at all they may do. A
-// player holding a piece always does, since the board cannot fill up: 8 pieces,
-// 16 squares. It can only come back false once every piece is in play and every
-// one of them is boxed in, which is the game's only draw.
+// hasLegalAction reports whether the player has anything at all they may do.
+//
+// Under the classic rules this was unreachable — 8 pieces on 16 squares means a
+// player holding anything can always drop it somewhere — which is why the game
+// had no ending it could actually arrive at. With drops restricted it is a real
+// possibility, and it loses the game for the player it happens to.
 func (gb *GameBoard) hasLegalAction(p Player) bool {
 	for slot := range HandSize {
 		source := Position{Row: slot, Col: HandCol(p)}
@@ -161,7 +286,13 @@ func (gb *GameBoard) Snapshot(current Player) GameSnapshot {
 		WhiteHand:     gb.handPieces(White),
 		BlackHand:     gb.handPieces(Black),
 		CurrentPlayer: current,
+		Rules:         gb.rules,
 	}
+}
+
+// WinningLine is the run that ended the game, for drawing it.
+func (gb *GameBoard) WinningLine(p Player) []Position {
+	return gb.board.winningLine(p, gb.rules.WinLength)
 }
 
 func (gb *GameBoard) Print() {

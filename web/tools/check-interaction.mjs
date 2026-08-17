@@ -130,7 +130,7 @@ try {
 	// Selecting a piece in hand should light up every empty square, and the move
 	// itself goes through the rules — the same call the pointer makes.
 	let hints = await evaluate( 'window.__select("dark:knight")' );
-	check( hints.length === 16, 'a piece in hand can go on any of the sixteen squares', `${hints.length}` );
+	check( hints.length === 16, 'the first piece can go on any of the sixteen squares', `${hints.length}` );
 
 	let r = await evaluate( 'window.__move("dark:knight","B3")' );
 	check( r.ok, 'dark:knight -> B3 accepted', r.reason ?? '' );
@@ -198,51 +198,128 @@ try {
 		'only the knight is left in play' );
 	check( state.hands.light[ 3 ] === 'rook', 'the captured rook is back in light’s reserve',
 		String( state.hands.light ) );
-	check( ( await evaluate( 'document.querySelectorAll("#roster-them .slot[data-state=hand]").length' ) ) === 4,
-		'and the panel shows all four of theirs in hand again' );
+	// All four are back in the reserve, but the one just taken is cooling rather
+	// than ready — a capture buys a turn, which is the point of it.
+	check( ( await evaluate( 'document.querySelectorAll("#roster-them .slot[data-state=hand]").length' ) ) === 3,
+		'three of theirs are ready' );
+	check( ( await evaluate( 'document.querySelectorAll("#roster-them .slot[data-state=cooling]").length' ) ) === 1,
+		'and the one just taken is sitting out' );
+	check( ( await evaluate( 'document.getElementById("roster-them-count").textContent' ) ).includes( 'READY' ),
+		'the count says how many can actually be played',
+		await evaluate( 'document.getElementById("roster-them-count").textContent' ) );
 	check( ( await evaluate( 'document.querySelectorAll("#history-list .took").length' ) ) === 1,
 		'the history marks the capture' );
 
 	const rows = await evaluate( 'document.querySelectorAll("#history-list li").length' );
 	check( rows === 3, 'move history rendered a row per move', `${rows} rows` );
 
-	console.log( '\nwinning' );
+	console.log( '\nwinning, and the rules that made it possible' );
 
 	await evaluate( 'window.__restart()' );
-	await sleep( 200 );
+	await sleep( 250 );
 
-	// dark fills rank 2, light stays on rank 4.
-	for ( const [ i, type ] of [ 'pawn', 'knight', 'bishop', 'rook' ].entries() ) {
+	// Two in a row, then the third by dropping — which the rules refuse, because a
+	// placement may not be the move that completes a line.
+	r = await evaluate( 'window.__move("dark:pawn","A2")' );
+	check( r.ok, 'dark places a pawn on A2', r.reason ?? '' );
+	r = await evaluate( 'window.__move("light:pawn","D4")' );
+	check( r.ok, 'light answers on D4', r.reason ?? '' );
+	r = await evaluate( 'window.__move("dark:knight","B2")' );
+	check( r.ok, 'dark places a knight on B2 — two in a row', r.reason ?? '' );
+	r = await evaluate( 'window.__move("light:knight","D3")' );
+	check( r.ok, 'light answers again', r.reason ?? '' );
 
-		const file = 'ABCD'[ i ];
-		const dark = await evaluate( `window.__move("dark:${type}","${file}2")` );
-		if ( ! dark.ok ) check( false, `dark ${type} -> ${file}2`, dark.reason );
+	let drops = await evaluate( 'window.__moves("dark:bishop")' );
+	check( ! drops.includes( 'C2' ), 'the square that would win is not offered', drops.join( ' ' ) );
+	check( drops.length > 0, 'but the reserve is still placeable', `${drops.length} squares` );
 
-		const over = ( await evaluate( 'window.__state()' ) ).over;
-		if ( over ) break;
+	r = await evaluate( 'window.__move("dark:bishop","C2")' );
+	check( ! r.ok, 'and the winning drop is refused', r.reason ?? '' );
 
-		const light = await evaluate( `window.__move("light:${type}","${file}4")` );
-		if ( ! light.ok ) check( false, `light ${type} -> ${file}4`, light.reason );
-
-	}
+	// Walk a piece in instead. B1 -> C2 is a bishop's diagonal.
+	r = await evaluate( 'window.__move("dark:bishop","B1")' );
+	check( r.ok, 'the bishop goes to B1 instead', r.reason ?? '' );
+	r = await evaluate( 'window.__move("light:bishop","C4")' );
+	check( r.ok, 'light answers', r.reason ?? '' );
+	r = await evaluate( 'window.__move("B1","C2")' );
+	check( r.ok, 'the bishop walks into C2', r.reason ?? '' );
 
 	state = await evaluate( 'window.__state()' );
-	check( state.over && state.winner === 'dark', 'four in a row ends the game',
+	check( state.over && state.winner === 'dark', 'three in a line ends the game',
 		`over ${state.over}, winner ${state.winner}` );
+	check( state.ending === 'won', 'the ending says how', String( state.ending ) );
 	check( ( await evaluate( 'document.getElementById("turn-label").textContent' ) ) === 'YOU WIN',
 		'the panel says so' );
-	check( ( await evaluate( 'window.__hints()' ) ).join( '' ) === 'A2B2C2D2',
+	check( ( await evaluate( 'window.__hints()' ) ).join( '' ) === 'A2B2C2',
 		'and the winning line is marked on the board' );
 
 	r = await evaluate( 'window.__move("A2","A1")' );
 	check( ! r.ok, 'a move after the game ends refused', r.reason ?? '' );
 
+	console.log( '\nthe pie rule' );
+
+	await evaluate( 'window.__restart()' );
+	await sleep( 250 );
+
+	check( ( await evaluate( 'document.getElementById("swap").hidden' ) ) === true,
+		'the swap is not offered before anyone has moved' );
+
+	await evaluate( 'window.__move("dark:rook","B2")' );
+	await sleep( 200 );
+
+	state = await evaluate( 'window.__state()' );
+	check( state.canSwap, 'it is offered on the second player’s first turn' );
+	check( ( await evaluate( 'document.getElementById("swap").hidden' ) ) === false,
+		'and the button appears' );
+
+	await evaluate( 'document.getElementById("swap").click()' );
+	await sleep( 300 );
+
+	const swapped = await evaluate( 'window.__squares()' );
+	state = await evaluate( 'window.__state()' );
+
+	check( swapped.length === 1 && swapped[ 0 ].square === 'B2' && swapped[ 0 ].tone === 'light',
+		'the piece on B2 changed hands — and changed timber',
+		JSON.stringify( swapped.map( ( p ) => `${p.tone} ${p.type}` ) ) );
+	check( state.turn === 'dark', 'dark is to move, now as the second player', state.turn );
+	check( ! state.canSwap, 'and the rule has closed' );
+	check( ( await evaluate( 'document.getElementById("swap").hidden' ) ) === true,
+		'so the button is gone' );
+	check( ( await evaluate( 'document.getElementById("roster-you-count").textContent' ) ).startsWith( '4' ),
+		'dark has its whole reserve back' );
+	check( ( await evaluate( 'document.querySelectorAll("#history-list li").length' ) ) === 2,
+		'and the swap is in the history' );
+
+	console.log( '\na captured piece has to sit out' );
+
+	await evaluate( 'window.__restart()' );
+	await sleep( 250 );
+
+	await evaluate( 'window.__move("dark:rook","A1")' );
+	await evaluate( 'window.__move("light:pawn","A2")' );
+	await evaluate( 'window.__move("A1","A2")' ); // dark takes the pawn
+	await sleep( 300 );
+
+	state = await evaluate( 'window.__state()' );
+	check( state.cooldowns.light[ 0 ] === 1, 'the captured pawn is cooling',
+		JSON.stringify( state.cooldowns.light ) );
+	check( ( await evaluate( 'window.__moves("light:pawn")' ) ).length === 0,
+		'so it cannot be placed this turn' );
+	check( ( await evaluate( 'document.querySelectorAll("#roster-them .slot[data-state=cooling]").length' ) ) === 1,
+		'the panel shows it cooling' );
+	check( ( await evaluate( 'document.querySelector("#roster-them .cooldown")?.textContent' ) ) === '1',
+		'with the number of turns left' );
+
+	await evaluate( 'window.__move("light:knight","D4")' );
+	await evaluate( 'window.__move("A2","A1")' );
+	await sleep( 300 );
+
+	state = await evaluate( 'window.__state()' );
+	check( state.cooldowns.light[ 0 ] === 0, 'by their next turn it has cooled off' );
+	check( ( await evaluate( 'window.__moves("light:pawn")' ) ).length > 0, 'and can be placed again' );
+
 	await evaluate( 'window.__restart()' );
 	await sleep( 200 );
-	state = await evaluate( 'window.__state()' );
-	check( ! state.over && ( await evaluate( 'window.__squares()' ) ).length === 0 &&
-		state.hands.dark.filter( Boolean ).length === 4,
-		'restart puts every piece back in the reserves' );
 
 	console.log( '\nreal pointer drag' );
 

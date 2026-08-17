@@ -54,7 +54,7 @@ func TestOpeningPositionHasEveryPieceInHand(t *testing.T) {
 }
 
 func TestPlacementTakesAnyEmptySquareAndOnlyFromYourOwnHand(t *testing.T) {
-	gb := InitializeGameBoard()
+	gb := NewGameBoard(ClassicRules())
 
 	if got := len(gb.validDestinations(hand(White, Rook), White)); got != 16 {
 		t.Errorf("a rook in hand should have 16 placements on an empty board, has %d", got)
@@ -85,7 +85,7 @@ func TestPlacementTakesAnyEmptySquareAndOnlyFromYourOwnHand(t *testing.T) {
 }
 
 func TestMovesCanCaptureAnEnemyButNotLandOnYourOwn(t *testing.T) {
-	gb := InitializeGameBoard()
+	gb := NewGameBoard(ClassicRules())
 
 	place(t, &gb, White, Rook, at(0, 0))
 	place(t, &gb, White, Pawn, at(0, 2))
@@ -109,7 +109,7 @@ func TestMovesCanCaptureAnEnemyButNotLandOnYourOwn(t *testing.T) {
 }
 
 func TestCaptureSendsThePieceBackToItsOwnersHand(t *testing.T) {
-	gb := InitializeGameBoard()
+	gb := NewGameBoard(ClassicRules())
 
 	place(t, &gb, White, Rook, at(0, 0))
 	place(t, &gb, Black, Bishop, at(2, 0))
@@ -152,7 +152,7 @@ func TestCaptureSendsThePieceBackToItsOwnersHand(t *testing.T) {
 }
 
 func TestIllegalMovesChangeNothing(t *testing.T) {
-	gb := InitializeGameBoard()
+	gb := NewGameBoard(ClassicRules())
 
 	place(t, &gb, White, Rook, at(0, 0))
 	place(t, &gb, Black, Rook, at(3, 3))
@@ -190,48 +190,58 @@ func TestIllegalMovesChangeNothing(t *testing.T) {
 }
 
 func TestWinningStateNeedsWinLengthInALine(t *testing.T) {
-	gb := InitializeGameBoard()
+	for _, rules := range []RuleSet{ClassicRules(), DefaultRules()} {
+		k := rules.WinLength
+		gb := NewGameBoard(rules)
 
-	for col := range WinLength - 1 {
-		place(t, &gb, White, PieceType(col), at(1, col))
-	}
+		// Placed directly, because under the default rules a drop may not be the
+		// move that completes the line — that restriction is tested on its own.
+		for col := range k - 1 {
+			gb.board.SetPiece(at(1, col), CreatePiece(PieceType(col), White))
+		}
 
-	if gb.board.isWinningState(White) {
-		t.Fatalf("%d in a row should not win with WinLength %d", WinLength-1, WinLength)
-	}
+		if gb.board.isWinningState(White, k) {
+			t.Errorf("%d in a row should not win when %d is needed", k-1, k)
+		}
 
-	place(t, &gb, White, PieceType(WinLength-1), at(1, WinLength-1))
+		gb.board.SetPiece(at(1, k-1), CreatePiece(PieceType(k-1), White))
 
-	if !gb.board.isWinningState(White) {
-		t.Error("a full row of White should win")
-	}
+		if !gb.board.isWinningState(White, k) {
+			t.Errorf("%d in a row should win", k)
+		}
 
-	if gb.board.isWinningState(Black) {
-		t.Error("Black should not win off White's row")
+		if gb.board.isWinningState(Black, k) {
+			t.Error("Black should not win off White's row")
+		}
+
+		if line := gb.WinningLine(White); len(line) != k {
+			t.Errorf("the winning line should be %d long, is %v", k, line)
+		}
 	}
 }
 
 func TestWinningStateFindsADiagonal(t *testing.T) {
-	gb := InitializeGameBoard()
+	gb := NewGameBoard(ClassicRules())
 
 	for i := range Cells {
 		place(t, &gb, Black, PieceType(i), at(i, i))
 	}
 
-	if !gb.board.isWinningState(Black) {
+	if !gb.board.isWinningState(Black, ClassicRules().WinLength) {
 		t.Error("the main diagonal should win")
 	}
 }
 
 func TestALineOfMixedPiecesDoesNotWin(t *testing.T) {
-	gb := InitializeGameBoard()
+	gb := NewGameBoard(ClassicRules())
 
 	place(t, &gb, White, Pawn, at(2, 0))
 	place(t, &gb, White, Knight, at(2, 1))
 	place(t, &gb, Black, Bishop, at(2, 2))
 	place(t, &gb, White, Rook, at(2, 3))
 
-	if gb.board.isWinningState(White) || gb.board.isWinningState(Black) {
+	k := ClassicRules().WinLength
+	if gb.board.isWinningState(White, k) || gb.board.isWinningState(Black, k) {
 		t.Error("a row shared by both players should not win for either")
 	}
 }
@@ -371,7 +381,9 @@ func TestStartGameCancelClearsTheSelection(t *testing.T) {
 }
 
 func TestStartGameEndsOnAWinAndStaysEnded(t *testing.T) {
-	act, snapshots := run(t)
+	// Four placements in a row — which only the classic rules allow, since the
+	// default ones refuse a drop that completes a line.
+	act, snapshots := runWith(t, ClassicRules())
 	defer close(act)
 
 	<-snapshots
@@ -504,10 +516,16 @@ func TestActionDecodesFromJSON(t *testing.T) {
 func run(t *testing.T) (chan Action, chan GameSnapshot) {
 	t.Helper()
 
+	return runWith(t, DefaultRules())
+}
+
+func runWith(t *testing.T, rules RuleSet) (chan Action, chan GameSnapshot) {
+	t.Helper()
+
 	act := make(chan Action, 8)
 	snapshots := make(chan GameSnapshot, 8)
 
-	go StartGame(act, snapshots)
+	go StartGameWithRules(rules, act, snapshots)
 
 	return act, snapshots
 }
@@ -550,5 +568,387 @@ func TestStartGameRefusesAnActionFromTheWrongSender(t *testing.T) {
 
 	if snap := <-snapshots; snap.Rejected != "" || snap.Board[0][0] == nil {
 		t.Errorf("a local action should still be trusted: %q", snap.Rejected)
+	}
+}
+
+// ------------------------------------------------------- the measured ruleset
+//
+// The rules below are the ones that changed after self-play showed the original
+// design could not finish a game: 58% of games between competent players were
+// still going after 150 moves each, because a four-piece line takes four turns
+// to build and one capture to undo. Each test here pins one of the rules that
+// fixed it.
+
+func TestADropMayNotBeTheMoveThatCompletesALine(t *testing.T) {
+	gb := NewGameBoard(DefaultRules())
+
+	// Two white pieces in a row, with the third square open.
+	gb.board.SetPiece(at(1, 0), CreatePiece(Pawn, White))
+	gb.board.SetPiece(at(1, 1), CreatePiece(Knight, White))
+
+	gap := at(1, 2)
+	drops := gb.validDestinations(hand(White, Bishop), White)
+
+	if slices.Contains(drops, gap) {
+		t.Error("dropping into the gap would win, and should have been refused")
+	}
+
+	if len(drops) == 0 {
+		t.Fatal("the rest of the board should still be droppable")
+	}
+
+	if _, err := gb.MovePiece(hand(White, Bishop), gap, White); err == nil {
+		t.Error("the winning drop was allowed anyway")
+	}
+
+	// The same square, reached by moving a piece already in play, is the win —
+	// diagonally, since it is the bishop doing the walking.
+	gb.board.SetPiece(at(0, 1), CreatePiece(Bishop, White))
+
+	if _, err := gb.MovePiece(at(0, 1), gap, White); err != nil {
+		t.Fatalf("walking the bishop in should be legal: %v", err)
+	}
+
+	if !gb.board.isWinningState(White, gb.rules.WinLength) {
+		t.Error("three in a row should have won")
+	}
+}
+
+func TestADropMustTouchOneOfYourOwnPieces(t *testing.T) {
+	gb := NewGameBoard(DefaultRules())
+
+	// Nothing in play yet, so the whole board is open.
+	if got := len(gb.validDestinations(hand(White, Rook), White)); got != Cells*Cells {
+		t.Errorf("the first drop should see every square, saw %d", got)
+	}
+
+	gb.board.SetPiece(at(0, 0), CreatePiece(Rook, White))
+
+	drops := gb.validDestinations(hand(White, Pawn), White)
+
+	for _, want := range []Position{at(0, 1), at(1, 0), at(1, 1)} {
+		if !slices.Contains(drops, want) {
+			t.Errorf("%v touches the rook and should be droppable, offers %v", want, drops)
+		}
+	}
+
+	for _, dont := range []Position{at(3, 3), at(0, 2), at(2, 0)} {
+		if slices.Contains(drops, dont) {
+			t.Errorf("%v touches nothing of White's and should be refused", dont)
+		}
+	}
+
+	// The other player is not constrained by White's pieces.
+	if got := len(gb.validDestinations(hand(Black, Pawn), Black)); got != Cells*Cells-1 {
+		t.Errorf("Black's first drop should see the 15 free squares, saw %d", got)
+	}
+}
+
+func TestACapturedPieceSitsOutATurn(t *testing.T) {
+	act, snapshots := run(t)
+	defer close(act)
+
+	<-snapshots
+
+	// White places a rook, Black places a pawn next to it, White takes it.
+	play := func(from, to Position) GameSnapshot {
+		t.Helper()
+		act <- Action{ActionType: Execute, Move: Move{Source: from, Destination: to}}
+		snap := <-snapshots
+		if snap.Rejected != "" {
+			t.Fatalf("%v -> %v refused: %s", from, to, snap.Rejected)
+		}
+		return snap
+	}
+
+	play(hand(White, Rook), at(0, 0))
+	play(hand(Black, Pawn), at(0, 1))
+	snap := play(at(0, 0), at(0, 1))
+
+	if snap.Captured == nil || snap.Captured.Type() != Pawn {
+		t.Fatalf("the pawn should have been captured, got %v", snap.Captured)
+	}
+
+	back := snap.BlackHand[Slot(Pawn)]
+	if back == nil {
+		t.Fatal("the captured pawn is not in Black's hand")
+	}
+
+	if back.Ready() {
+		t.Error("a piece captured this turn should not be placeable immediately")
+	}
+
+	if got := len(snap.ValidMoves); got != 0 {
+		t.Errorf("a cooling piece should offer no destinations, offered %d", got)
+	}
+
+	// Black's turn happens, and by their next one the pawn has cooled off.
+	act <- Action{ActionType: Select, Move: Move{Source: hand(Black, Pawn)}}
+	if snap := <-snapshots; len(snap.ValidMoves) != 0 {
+		t.Error("the pawn should still be sitting out on the turn it was taken")
+	}
+
+	play(hand(Black, Knight), at(3, 3)) // Black does something else
+	play(at(0, 1), at(0, 0))            // White marks time
+
+	act <- Action{ActionType: Select, Move: Move{Source: hand(Black, Pawn)}}
+	snap = <-snapshots
+
+	if snap.BlackHand[Slot(Pawn)] == nil || !snap.BlackHand[Slot(Pawn)].Ready() {
+		t.Error("the pawn should be ready again by Black's next turn")
+	}
+
+	if len(snap.ValidMoves) == 0 {
+		t.Error("and it should have somewhere to go")
+	}
+}
+
+func TestRepetitionEndsTheGameAsADraw(t *testing.T) {
+	rules := DefaultRules()
+	rules.RepetitionLimit = 3
+
+	act, snapshots := runWith(t, rules)
+	defer close(act)
+
+	<-snapshots
+
+	send := func(from, to Position) GameSnapshot {
+		t.Helper()
+		act <- Action{ActionType: Execute, Move: Move{Source: from, Destination: to}}
+		return <-snapshots
+	}
+
+	// Two rooks in opposite corners, then both shuffle back and forth.
+	if snap := send(hand(White, Rook), at(0, 0)); snap.Rejected != "" {
+		t.Fatalf("white rook: %s", snap.Rejected)
+	}
+	if snap := send(hand(Black, Rook), at(3, 3)); snap.Rejected != "" {
+		t.Fatalf("black rook: %s", snap.Rejected)
+	}
+
+	var last GameSnapshot
+
+	for range 12 {
+		last = send(at(0, 0), at(0, 1))
+		if last.IsOver {
+			break
+		}
+		last = send(at(3, 3), at(3, 2))
+		if last.IsOver {
+			break
+		}
+		last = send(at(0, 1), at(0, 0))
+		if last.IsOver {
+			break
+		}
+		last = send(at(3, 2), at(3, 3))
+		if last.IsOver {
+			break
+		}
+	}
+
+	if !last.IsOver {
+		t.Fatal("shuffling forever should have been declared a draw")
+	}
+
+	if last.Winner != nil {
+		t.Errorf("a repetition draw has no winner, got %v", last.Winner)
+	}
+
+	if last.Ending != DrawnByRepetition {
+		t.Errorf("ending should be DrawnByRepetition, is %v", last.Ending)
+	}
+}
+
+func TestTheGameGivesUpAfterMaxPlies(t *testing.T) {
+	rules := DefaultRules()
+	rules.MaxPlies = 6
+	rules.RepetitionLimit = 0 // so the cap is what ends it
+
+	act, snapshots := runWith(t, rules)
+	defer close(act)
+
+	<-snapshots
+
+	moves := []Move{
+		{Source: hand(White, Rook), Destination: at(0, 0)},
+		{Source: hand(Black, Rook), Destination: at(3, 3)},
+		{Source: at(0, 0), Destination: at(0, 1)},
+		{Source: at(3, 3), Destination: at(3, 2)},
+		{Source: at(0, 1), Destination: at(0, 0)},
+		{Source: at(3, 2), Destination: at(3, 3)},
+	}
+
+	var last GameSnapshot
+
+	for _, m := range moves {
+		act <- Action{ActionType: Execute, Move: m}
+		last = <-snapshots
+
+		if last.Rejected != "" {
+			t.Fatalf("%v refused: %s", m, last.Rejected)
+		}
+	}
+
+	if !last.IsOver || last.Ending != DrawnByLength {
+		t.Errorf("the ply cap should have drawn the game, got over=%v ending=%v", last.IsOver, last.Ending)
+	}
+
+	if last.MoveNo != rules.MaxPlies {
+		t.Errorf("move number should be %d, is %d", rules.MaxPlies, last.MoveNo)
+	}
+}
+
+func TestTheRulesTravelWithTheSnapshot(t *testing.T) {
+	act, snapshots := run(t)
+	defer close(act)
+
+	snap := <-snapshots
+
+	if snap.Rules.WinLength != DefaultRules().WinLength || !snap.Rules.NoWinByDrop {
+		t.Errorf("the snapshot should carry the ruleset, carries %+v", snap.Rules)
+	}
+
+	data, err := json.Marshal(snap)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	for _, want := range []string{`"winLength":3`, `"noWinByDrop":true`, `"captureCooldown":1`} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("encoded snapshot is missing %s", want)
+		}
+	}
+}
+
+func TestTheSecondPlayerMayTakeTheFirstPlayersPosition(t *testing.T) {
+	act, snapshots := run(t)
+	defer close(act)
+
+	opening := <-snapshots
+	if opening.CanSwap {
+		t.Error("the pie rule should not be open before anyone has moved")
+	}
+
+	// White opens.
+	act <- Action{ActionType: Execute, Move: Move{Source: hand(White, Rook), Destination: at(1, 1)}}
+	snap := <-snapshots
+
+	if snap.Rejected != "" {
+		t.Fatalf("opening move refused: %s", snap.Rejected)
+	}
+
+	if !snap.CanSwap {
+		t.Fatal("the pie rule should be open on Black's first turn")
+	}
+
+	if snap.Board[1][1].Player() != White {
+		t.Fatalf("(1,1) should hold White's rook, holds %v", snap.Board[1][1])
+	}
+
+	// Black takes it instead of replying.
+	act <- Action{ActionType: Swap}
+	snap = <-snapshots
+
+	if snap.Rejected != "" {
+		t.Fatalf("the swap was refused: %s", snap.Rejected)
+	}
+
+	if !snap.Swapped {
+		t.Error("the snapshot should record that the position was taken")
+	}
+
+	if snap.Board[1][1] == nil || snap.Board[1][1].Player() != Black {
+		t.Errorf("the rook on (1,1) should now be Black's, is %v", snap.Board[1][1])
+	}
+
+	if snap.BlackHand[Slot(Rook)] != nil {
+		t.Error("Black's rook slot should be empty — that rook is on the board now")
+	}
+
+	if snap.WhiteHand[Slot(Rook)] == nil {
+		t.Error("White should now hold the full reserve")
+	}
+
+	for slot, piece := range snap.WhiteHand {
+		if piece == nil {
+			t.Fatalf("White hand slot %d should be filled after the swap", slot)
+		}
+
+		if piece.Player() != White {
+			t.Errorf("a piece in White's hand reports %v", piece.Player())
+		}
+
+		if piece.Position() != hand(White, piece.Type()) {
+			t.Errorf("%v sits at %v, want %v", piece.Type(), piece.Position(), hand(White, piece.Type()))
+		}
+	}
+
+	if snap.CurrentPlayer != White {
+		t.Errorf("White should be to move after being swapped, %v is", snap.CurrentPlayer)
+	}
+
+	if snap.CanSwap {
+		t.Error("the pie rule closes once it has been used")
+	}
+
+	// And it cannot be used again.
+	act <- Action{ActionType: Swap}
+	if snap := <-snapshots; snap.Rejected == "" {
+		t.Error("a second swap should be refused")
+	}
+}
+
+func TestTheSwapIsOnlyOpenOnTheSecondPlayersFirstTurn(t *testing.T) {
+	act, snapshots := run(t)
+	defer close(act)
+
+	<-snapshots
+
+	// Not before anyone has moved.
+	act <- Action{ActionType: Swap}
+	if snap := <-snapshots; snap.Rejected == "" {
+		t.Error("swapping before the first move should be refused")
+	}
+
+	play := func(from, to Position) GameSnapshot {
+		t.Helper()
+		act <- Action{ActionType: Execute, Move: Move{Source: from, Destination: to}}
+		snap := <-snapshots
+		if snap.Rejected != "" {
+			t.Fatalf("%v -> %v refused: %s", from, to, snap.Rejected)
+		}
+		return snap
+	}
+
+	play(hand(White, Rook), at(0, 0))
+	play(hand(Black, Rook), at(3, 3)) // Black replies instead of swapping
+
+	if snap := play(at(0, 0), at(0, 1)); snap.CanSwap {
+		t.Error("the pie rule should have closed once Black replied")
+	}
+
+	act <- Action{ActionType: Swap}
+	if snap := <-snapshots; snap.Rejected == "" {
+		t.Error("swapping after the second player has already replied should be refused")
+	}
+}
+
+func TestSwappingIsOffUnderTheClassicRules(t *testing.T) {
+	act, snapshots := runWith(t, ClassicRules())
+	defer close(act)
+
+	<-snapshots
+
+	act <- Action{ActionType: Execute, Move: Move{Source: hand(White, Rook), Destination: at(1, 1)}}
+	snap := <-snapshots
+
+	if snap.CanSwap {
+		t.Error("the classic rules have no pie rule")
+	}
+
+	act <- Action{ActionType: Swap}
+	if snap := <-snapshots; snap.Rejected == "" {
+		t.Error("the swap should be refused when the ruleset does not have it")
 	}
 }

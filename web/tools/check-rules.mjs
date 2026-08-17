@@ -5,10 +5,13 @@
 // `src/game.js` imports nothing, which is what makes this possible, and these are
 // the same cases `internal/engine/engine_test.go` puts to the Go engine. If the two
 // ever disagree, one of them is wrong and this is where it shows.
+//
+// Two rulesets are checked: the one being shipped, and the classic one it
+// replaced, which is kept because it is what every variant has to beat.
 import {
-	CELLS, HAND_SIZE, TYPES, WIN_LENGTH,
-	allMoves, apply, createGame, destinations, handCount, handRef,
-	pieceAt, toAction, toPosition, winningLine,
+	CELLS, CLASSIC_RULES, DEFAULT_RULES, ENDINGS, HAND_SIZE, TYPES,
+	allMoves, apply, canSwap, createGame, destinations, handCount, handRef,
+	pieceAt, positionKey, swap, toAction, toPosition, winningLine,
 } from '../src/game.js';
 
 let fail = 0;
@@ -34,6 +37,21 @@ const census = ( state ) =>
 	handCount( state, 'light' ) + handCount( state, 'dark' ) +
 	state.board.flat().filter( Boolean ).length;
 
+/** Puts a piece straight onto a square, bypassing the drop rules a test is not about. */
+function put( state, tone, type, square ) {
+
+	const col = 'ABCD'.indexOf( square[ 0 ] );
+	const row = '1234'.indexOf( square[ 1 ] );
+	const slot = TYPES.indexOf( type );
+
+	const piece = state.hands[ tone ][ slot ] ?? { id: `${tone}-${type}`, tone, type, cooldown: 0 };
+	state.hands[ tone ][ slot ] = null;
+	state.board[ row ][ col ] = piece;
+
+	return piece;
+
+}
+
 console.log( '\nopening position' );
 {
 	const state = createGame();
@@ -46,95 +64,219 @@ console.log( '\nopening position' );
 	check( TYPES.every( ( type, slot ) => state.hands.dark[ slot ].type === type ),
 		'a hand slot is its own piece type' );
 	check( ! state.over && state.winner === null, 'and the game is not over' );
+	check( destinations( state, handRef( 'dark', 'knight' ) ).length === CELLS * CELLS,
+		'the first piece may go anywhere' );
 }
 
-console.log( '\nplacing from the hand' );
+console.log( '\na drop may not be the move that completes a line' );
 {
 	const state = createGame();
-	const knight = handRef( 'dark', 'knight' );
 
-	check( destinations( state, knight ).length === CELLS * CELLS,
-		'a piece in hand may go on any empty square',
-		`${destinations( state, knight ).length}` );
-	check( destinations( state, handRef( 'light', 'knight' ) ).length === 0,
-		'but not out of the other side’s hand' );
+	put( state, 'dark', 'pawn', 'A2' );
+	put( state, 'dark', 'knight', 'B2' );
 
-	must( state, knight, 'B3' );
+	const drops = destinations( state, handRef( 'dark', 'bishop' ) );
 
-	check( pieceAt( state, 'B3' )?.type === 'knight', 'the knight is on B3' );
-	check( pieceAt( state, knight ) === null, 'and no longer in hand' );
-	check( handCount( state, 'dark' ) === HAND_SIZE - 1, 'the reserve is down to three',
-		`${handCount( state, 'dark' )}` );
-	check( destinations( state, knight ).length === 0, 'an empty hand slot offers nothing' );
-	check( state.turn === 'light', 'placing passes the turn', state.turn );
+	check( ! drops.includes( 'C2' ), 'the square that would win is not offered', drops.join( ' ' ) );
+	check( drops.length > 0, 'the rest of the board still is', `${drops.length} squares` );
+	check( ! apply( state, handRef( 'dark', 'bishop' ), 'C2' ).ok, 'and the drop is refused if asked for' );
+
+	// The same square, walked into by a piece already in play, is the win.
+	put( state, 'dark', 'bishop', 'B1' );
+	const result = must( state, 'B1', 'C2' );
+
+	check( result.ok && state.over && state.winner === 'dark',
+		'walking a piece in wins instead', `over ${state.over}, winner ${state.winner}` );
+	check( state.ending === ENDINGS.won, 'and the ending says so', String( state.ending ) );
+	check( winningLine( state, 'dark' )?.join( '' ) === 'A2B2C2', 'the line is reported',
+		String( winningLine( state, 'dark' ) ) );
+}
+
+console.log( '\na drop must touch one of your own pieces' );
+{
+	const state = createGame();
+
+	must( state, handRef( 'dark', 'rook' ), 'A1' );
+
+	// light is unconstrained — it has nothing in play yet
 	check( destinations( state, handRef( 'light', 'pawn' ) ).length === CELLS * CELLS - 1,
+		'the other side is not constrained by your pieces' );
+
+	must( state, handRef( 'light', 'pawn' ), 'D4' );
+
+	const drops = destinations( state, handRef( 'dark', 'pawn' ) );
+
+	check( [ 'A2', 'B1', 'B2' ].every( ( s ) => drops.includes( s ) ),
+		'the squares around your rook are open', drops.join( ' ' ) );
+	check( ! drops.includes( 'C3' ) && ! drops.includes( 'A4' ),
+		'squares touching nothing of yours are not' );
+}
+
+console.log( '\na captured piece sits out a turn' );
+{
+	const state = createGame();
+
+	must( state, handRef( 'dark', 'rook' ), 'A1' );
+	must( state, handRef( 'light', 'pawn' ), 'A2' );
+
+	const result = must( state, 'A1', 'A2' ); // dark takes the pawn
+
+	check( result.captured?.type === 'pawn', 'the pawn is captured' );
+
+	const pawn = pieceAt( state, handRef( 'light', 'pawn' ) );
+	check( pawn !== null, 'and is back in light’s reserve' );
+	check( pawn.cooldown === DEFAULT_RULES.captureCooldown, 'carrying a cooldown',
+		`cooldown ${pawn?.cooldown}` );
+	check( destinations( state, handRef( 'light', 'pawn' ) ).length === 0,
+		'so it cannot be placed on the turn it was taken' );
+
+	must( state, handRef( 'light', 'knight' ), 'D4' ); // light does something else
+	must( state, 'A2', 'A1' );                          // dark marks time
+
+	check( pieceAt( state, handRef( 'light', 'pawn' ) ).cooldown === 0,
+		'by light’s next turn it has cooled off' );
+	check( destinations( state, handRef( 'light', 'pawn' ) ).length > 0,
+		'and can be placed again' );
+	check( census( state ) === 2 * HAND_SIZE, 'no piece was destroyed', `${census( state )}` );
+}
+
+console.log( '\nthe second player may take the first player’s position' );
+{
+	const state = createGame();
+
+	check( ! canSwap( state ), 'the pie rule is not open before anyone has moved' );
+
+	must( state, handRef( 'dark', 'rook' ), 'B2' );
+
+	check( canSwap( state ), 'it is open on the second player’s first turn' );
+	check( state.turn === 'light', 'and it is theirs to take', state.turn );
+
+	const result = swap( state );
+
+	check( result.ok, 'the swap goes through', result.reason ?? '' );
+	check( pieceAt( state, 'B2' )?.tone === 'light', 'the rook on B2 changed hands',
+		String( pieceAt( state, 'B2' )?.tone ) );
+	check( handCount( state, 'dark' ) === HAND_SIZE, 'dark has its whole reserve back',
+		`${handCount( state, 'dark' )}` );
+	check( handCount( state, 'light' ) === HAND_SIZE - 1, 'and light is a piece down',
+		`${handCount( state, 'light' )}` );
+	check( state.turn === 'dark', 'dark is to move, now as the second player', state.turn );
+	check( ! canSwap( state ), 'and the rule has closed' );
+	check( ! swap( state ).ok, 'a second swap is refused' );
+	check( census( state ) === 2 * HAND_SIZE, 'still eight pieces', `${census( state )}` );
+
+	// The swapped reserve is still usable — ids and tones have to line up or the
+	// board and the panel drift apart.
+	check( state.hands.dark.every( ( p ) => p === null || ( p.tone === 'dark' && p.id === `dark-${p.type}` ) ),
+		'the reserves are internally consistent after the swap' );
+	check( destinations( state, handRef( 'dark', 'pawn' ) ).length > 0,
+		'and dark can still place a piece' );
+}
+
+console.log( '\na game nobody is winning ends' );
+{
+	const state = createGame( { ...DEFAULT_RULES, swapRule: false, repetitionLimit: 3 } );
+
+	must( state, handRef( 'dark', 'rook' ), 'A1' );
+	must( state, handRef( 'light', 'rook' ), 'D4' );
+
+	// both shuffle back and forth
+	for ( let i = 0; i < 12 && ! state.over; i ++ ) {
+
+		if ( ! apply( state, 'A1', 'A2' ).ok ) break;
+		if ( state.over ) break;
+		if ( ! apply( state, 'D4', 'D3' ).ok ) break;
+		if ( state.over ) break;
+		if ( ! apply( state, 'A2', 'A1' ).ok ) break;
+		if ( state.over ) break;
+		if ( ! apply( state, 'D3', 'D4' ).ok ) break;
+
+	}
+
+	check( state.over, 'shuffling forever is declared a draw' );
+	check( state.winner === null, 'with no winner', String( state.winner ) );
+	check( state.ending === ENDINGS.repetition, 'by repetition', String( state.ending ) );
+}
+
+{
+	const state = createGame( { ...DEFAULT_RULES, swapRule: false, repetitionLimit: 0, maxPlies: 6 } );
+
+	must( state, handRef( 'dark', 'rook' ), 'A1' );
+	must( state, handRef( 'light', 'rook' ), 'D4' );
+	must( state, 'A1', 'A2' );
+	must( state, 'D4', 'D3' );
+	must( state, 'A2', 'A1' );
+	must( state, 'D3', 'D4' );
+
+	check( state.over && state.ending === ENDINGS.length, 'the ply cap ends it too',
+		`over ${state.over}, ending ${state.ending}` );
+	check( state.moveNo === 6, 'after exactly the cap', `${state.moveNo}` );
+}
+
+console.log( '\nthe classic ruleset it replaced' );
+{
+	const state = createGame( CLASSIC_RULES );
+
+	check( destinations( state, handRef( 'dark', 'knight' ) ).length === 16,
+		'a piece in hand may go on any empty square' );
+
+	must( state, handRef( 'dark', 'knight' ), 'B3' );
+
+	check( destinations( state, handRef( 'light', 'pawn' ) ).length === 15,
 		'and the other side sees fifteen squares left' );
+	check( ! canSwap( state ), 'there is no pie rule' );
+
+	// four in a line, by dropping, which the classic rules allow
+	const line = createGame( CLASSIC_RULES );
+	TYPES.forEach( ( type, i ) => {
+
+		if ( line.over ) return;
+		must( line, handRef( 'dark', type ), `${'ABCD'[ i ]}2` );
+		if ( ! line.over ) must( line, handRef( 'light', type ), `${'ABCD'[ i ]}4` );
+
+	} );
+
+	check( line.over && line.winner === 'dark', 'four in a row wins',
+		`over ${line.over}, winner ${line.winner}` );
+	check( winningLine( line, 'dark' )?.length === 4, 'and the line is four long' );
 }
 
 console.log( '\nhow the pieces move' );
 {
-	const state = createGame();
+	const state = createGame( CLASSIC_RULES );
 
 	must( state, handRef( 'dark', 'rook' ), 'A1' );
 	must( state, handRef( 'light', 'bishop' ), 'A3' );
 	must( state, handRef( 'dark', 'pawn' ), 'C1' );
 	must( state, handRef( 'light', 'pawn' ), 'D4' );
 
-	// dark's turn: the rook on A1 runs up the A file into the light bishop on A3,
-	// and along rank 1 into its own pawn on C1.
 	const rook = destinations( state, 'A1' );
 
 	check( rook.includes( 'A2' ) && rook.includes( 'A3' ), 'a rook slides up to an enemy and takes it',
 		rook.join( ' ' ) );
 	check( ! rook.includes( 'A4' ), 'and stops there' );
-	check( rook.includes( 'B1' ), 'it slides along the rank' );
-	check( ! rook.includes( 'C1' ) && ! rook.includes( 'D1' ), 'but not onto or past its own pawn' );
+	check( ! rook.includes( 'C1' ) && ! rook.includes( 'D1' ), 'not onto or past its own pawn' );
 
-	check( destinations( state, 'A3' ).length === 0, 'the other side’s piece cannot be moved' );
-	check( destinations( state, 'B2' ).length === 0, 'nor an empty square' );
-
-	// The pawn is directionless, so it steps one square any of the four ways.
 	const pawn = destinations( state, 'C1' );
 	check( pawn.length === 3 && pawn.every( ( s ) => [ 'B1', 'D1', 'C2' ].includes( s ) ),
 		'a pawn steps one square orthogonally', pawn.join( ' ' ) );
 
-	const knight = createGame();
+	const knight = createGame( CLASSIC_RULES );
 	must( knight, handRef( 'dark', 'knight' ), 'B2' );
-	must( knight, handRef( 'light', 'pawn' ), 'A1' ); // out of the way, and hands the turn back
+	must( knight, handRef( 'light', 'pawn' ), 'A1' );
 	const jumps = destinations( knight, 'B2' ).sort().join( ' ' );
 	check( jumps === 'A4 C4 D1 D3', 'a knight jumps in an L', jumps );
 }
 
-console.log( '\ncapture puts the piece back in its owner’s hand' );
-{
-	const state = createGame();
-
-	must( state, handRef( 'dark', 'rook' ), 'A1' );
-	must( state, handRef( 'light', 'bishop' ), 'A3' );
-
-	const result = must( state, 'A1', 'A3' );
-
-	check( result.captured?.type === 'bishop' && result.captured.tone === 'light',
-		'the light bishop is captured' );
-	check( pieceAt( state, handRef( 'light', 'bishop' ) )?.type === 'bishop',
-		'and is back in light’s hand, in its own slot' );
-	check( pieceAt( state, 'A3' )?.tone === 'dark', 'the rook holds A3' );
-	check( census( state ) === 2 * HAND_SIZE, 'no piece was destroyed', `${census( state )}` );
-	check( destinations( state, handRef( 'light', 'bishop' ) ).length > 0,
-		'the captured bishop can be placed again' );
-	check( state.history[ 0 ].captured?.type === 'bishop', 'the capture is in the history' );
-}
-
 console.log( '\nillegal moves change nothing' );
 {
-	const state = createGame();
+	const state = createGame( CLASSIC_RULES );
 
 	must( state, handRef( 'dark', 'rook' ), 'A1' );
 	must( state, handRef( 'light', 'rook' ), 'D4' );
-	must( state, handRef( 'dark', 'pawn' ), 'C1' ); // dark's own piece, in its rook's way
-	must( state, handRef( 'light', 'pawn' ), 'A4' ); // out of the way, and hands the turn back
+	must( state, handRef( 'dark', 'pawn' ), 'C1' );
+	must( state, handRef( 'light', 'pawn' ), 'A4' );
 
-	// dark to move, so every refusal below is the rule it names rather than the turn.
 	const cases = [
 		[ 'B2', 'B3', 'from an empty square' ],
 		[ 'D4', 'D3', 'the other side’s piece' ],
@@ -147,7 +289,7 @@ console.log( '\nillegal moves change nothing' );
 		[ handRef( 'dark', 'rook' ), 'B2', 'out of an empty hand slot' ],
 	];
 
-	const before = JSON.stringify( state );
+	const before = positionKey( state );
 
 	for ( const [ from, to, what ] of cases ) {
 
@@ -156,71 +298,28 @@ console.log( '\nillegal moves change nothing' );
 
 	}
 
-	check( JSON.stringify( state ) === before, 'and the game is untouched' );
-}
-
-console.log( '\nwinning' );
-{
-	const state = createGame();
-
-	// dark fills rank 2 while light stays out of the way on rank 4.
-	TYPES.forEach( ( type, i ) => {
-
-		if ( state.over ) return;
-
-		must( state, handRef( 'dark', type ), `${'ABCD'[ i ]}2` );
-		if ( ! state.over ) must( state, handRef( 'light', type ), `${'ABCD'[ i ]}4` );
-
-	} );
-
-	check( state.over && state.winner === 'dark', `${WIN_LENGTH} in a row wins`,
-		`over ${state.over}, winner ${state.winner}` );
-	check( winningLine( state, 'dark' )?.join( '' ) === 'A2B2C2D2', 'and the line is reported',
-		String( winningLine( state, 'dark' ) ) );
-	check( ! apply( state, 'A2', 'A1' ).ok, 'a move after the game ends is refused' );
-	check( destinations( state, 'A2' ).length === 0, 'and nothing is selectable' );
-}
-
-{
-	const state = createGame();
-
-	// A diagonal, and one short of it first.
-	must( state, handRef( 'dark', 'pawn' ), 'A1' );
-	must( state, handRef( 'light', 'pawn' ), 'D1' );
-	must( state, handRef( 'dark', 'knight' ), 'B2' );
-	must( state, handRef( 'light', 'knight' ), 'D2' );
-	must( state, handRef( 'dark', 'bishop' ), 'C3' );
-
-	check( ! state.over, `${WIN_LENGTH - 1} in a line does not win` );
-
-	must( state, handRef( 'light', 'bishop' ), 'D3' );
-	must( state, handRef( 'dark', 'rook' ), 'D4' );
-
-	check( state.over && state.winner === 'dark', 'the diagonal wins' );
+	check( positionKey( state ) === before, 'and the game is untouched' );
 }
 
 console.log( '\nthe protocol the Go engine speaks' );
 {
 	check( JSON.stringify( toPosition( 'B3' ) ) === '{"row":2,"col":1}', 'B3 is row 2, col 1' );
-	check( toPosition( handRef( 'dark', 'knight' ) ).col === - 2,
-		'a dark hand slot reports column -2' );
-	check( toPosition( handRef( 'light', 'knight' ) ).col === - 1,
-		'a light hand slot reports column -1' );
-	check( toPosition( handRef( 'dark', 'rook' ) ).row === TYPES.indexOf( 'rook' ),
-		'and the slot index is the piece type' );
+	check( toPosition( handRef( 'dark', 'knight' ) ).col === - 2, 'a dark hand slot is column -2' );
+	check( toPosition( handRef( 'light', 'knight' ) ).col === - 1, 'a light hand slot is column -1' );
 
 	const action = toAction( 'execute', handRef( 'dark', 'knight' ), 'B3' );
 	check( action.actionType === 'execute' && action.move.destination.row === 2,
 		'an action encodes as the engine decodes it', JSON.stringify( action ) );
+	check( toAction( 'swap' ).actionType === 'swap', 'and so does the swap' );
 }
 
-console.log( '\nthe draw' );
+console.log( '\nno legal action loses' );
 {
-	// Not reachable in a real game as far as anyone has shown, so this only checks
-	// that a player with nothing to do is detected rather than left stuck.
 	const state = createGame();
 	state.hands.light = Array( HAND_SIZE ).fill( null );
-	check( allMoves( state, 'light' ).length === 0, 'a side with nothing on the board and nothing in hand has no moves' );
+
+	check( allMoves( state, 'light' ).length === 0,
+		'a side with nothing on the board and nothing in hand has no moves' );
 }
 
 console.log( fail === 0 ? '\nall rules checks passed' : `\n${fail} failure(s)` );

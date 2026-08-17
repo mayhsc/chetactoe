@@ -21,8 +21,61 @@ export const TONES = [ 'light', 'dark' ];
 export const CELLS = 4;
 export const HAND_SIZE = 4;
 
-/** How many of your own pieces in a line wins. Four on a 4x4 board means all of them. */
-export const WIN_LENGTH = 4;
+/**
+ * The ruleset, mirroring `RuleSet` in internal/engine — data rather than
+ * constants, because these had to be measured before they could be chosen.
+ *
+ * Self-play said the original design could not finish a game: four in a line
+ * takes four turns to build and one capture to undo, so 58% of games between
+ * competent players were still going after 150 moves each. It also said the
+ * obvious fix on its own — three in a line — is a race the first player wins
+ * 92% of the time. What fixed it was restricting where a piece may be dropped.
+ */
+export const DEFAULT_RULES = {
+	winLength: 3,
+
+	// A placement may not be the move that completes a line: it has to be
+	// finished by moving a piece already in play, so it is visible a turn ahead.
+	noWinByDrop: true,
+
+	// A placement must touch a piece you already have in play, so the reserve
+	// builds a position instead of parachuting into one.
+	dropMustTouchOwn: true,
+
+	// Turns a captured piece must sit out before it can be placed again.
+	captureCooldown: 1,
+
+	// The pie rule: the second player, on their first turn, may take the first
+	// player's position instead of replying to it. Nothing else fixed the first
+	// move being worth around 65% of decisive games, and this needs no guess at
+	// the right compensation — an opening strong enough to be worth taking is one
+	// the opener stops making.
+	swapRule: true,
+
+	// Endings for a game nobody is winning. Without these the game has no draw
+	// it can reach at all.
+	maxPlies: 200,
+	repetitionLimit: 3,
+};
+
+/** The original design, kept because it is what every variant has to beat. */
+export const CLASSIC_RULES = {
+	winLength: 4,
+	noWinByDrop: false,
+	dropMustTouchOwn: false,
+	captureCooldown: 0,
+	swapRule: false,
+	maxPlies: 200,
+	repetitionLimit: 3,
+};
+
+/** Why a finished game finished. */
+export const ENDINGS = {
+	won: 'won',
+	repetition: 'repetition',
+	length: 'length',
+	noMove: 'no-move',
+};
 
 /**
  * Who opens. The engine's White moves first and White is the light timber, but
@@ -89,36 +142,65 @@ export const other = ( tone ) => ( tone === 'dark' ? 'light' : 'dark' );
  * player owns exactly one of each; that is also what makes a hand slot a fixed
  * place rather than a list that shuffles up when a piece leaves it.
  */
-export function createGame() {
+export function createGame( rules = DEFAULT_RULES ) {
 
 	const state = {
+		rules,
 		board: Array.from( { length: CELLS }, () => Array( CELLS ).fill( null ) ),
 		hands: { light: Array( HAND_SIZE ).fill( null ), dark: Array( HAND_SIZE ).fill( null ) },
 		turn: FIRST,
 		moveNo: 0,
 		over: false,
 		winner: null, // a tone, or null; null with over === true is a draw
+		ending: null,
 		history: [],
+		// how often each position has come up, so a game nobody is winning ends
+		seen: {},
 	};
 
 	for ( const tone of TONES ) {
 
 		TYPES.forEach( ( type, slot ) => {
 
-			state.hands[ tone ][ slot ] = { id: `${tone}-${type}`, tone, type };
+			// cooldown: turns this piece must still wait before it can be placed.
+			state.hands[ tone ][ slot ] = { id: `${tone}-${type}`, tone, type, cooldown: 0 };
 
 		} );
 
 	}
 
+	state.seen[ positionKey( state ) ] = 1;
+
 	return state;
 
 }
 
-/** Puts an existing game back to the opening position, in place. */
-export function reset( state ) {
+/**
+ * What stands where, what is waiting in each hand, and whose turn it is. Two
+ * positions with the same key offer the same game, so seeing one three times
+ * means neither side is making progress.
+ */
+export function positionKey( state ) {
 
-	Object.assign( state, createGame() );
+	const board = state.board
+		.map( ( row ) => row.map( ( p ) => ( p ? `${p.tone[ 0 ]}${p.type[ 0 ]}` : '..' ) ).join( '' ) )
+		.join( '' );
+
+	const hands = TONES
+		.map( ( tone ) => state.hands[ tone ].map( ( p ) => ( p ? p.cooldown : '.' ) ).join( '' ) )
+		.join( '|' );
+
+	return `${board}|${hands}|${state.turn}`;
+
+}
+
+/** Puts an existing game back to the opening position, in place. */
+export function reset( state, rules = state.rules ?? DEFAULT_RULES ) {
+
+	for ( const key of Object.keys( state ) ) delete state[ key ];
+
+	Object.assign( state, createGame( rules ) );
+
 	return state;
 
 }
@@ -180,9 +262,14 @@ export function destinations( state, ref, tone = state.turn ) {
 	const piece = pieceAt( state, ref );
 	if ( ! piece || piece.tone !== tone ) return [];
 
-	// A piece in hand has no moves of its own: it may be placed on any free
-	// square, and which piece it is makes no difference.
-	if ( isHandRef( ref ) ) return emptySquares( state );
+	// A piece in hand has no moves of its own: it may be placed, subject to
+	// whatever the ruleset takes away.
+	if ( isHandRef( ref ) ) {
+
+		if ( piece.cooldown > 0 ) return []; // still sitting out the turn it was taken on
+		return placements( state, piece, tone );
+
+	}
 
 	const { col, row } = parseSquare( ref );
 
@@ -195,6 +282,67 @@ export function destinations( state, ref, tone = state.turn ) {
 		default: return [];
 
 	}
+
+}
+
+/**
+ * Where a piece from the hand may go: any empty square, less what the rules take
+ * away — a square that would complete a line, and any square not touching a piece
+ * the player already has in play. Those two restrictions are what stop the game
+ * being a race to drop pieces in a row, which is what it measured as without them.
+ */
+export function placements( state, piece, tone ) {
+
+	const { noWinByDrop, dropMustTouchOwn } = state.rules;
+	const mustTouch = dropMustTouchOwn && hasPieces( state, tone );
+
+	return emptySquares( state ).filter( ( square ) => {
+
+		if ( mustTouch && ! touches( state, tone, square ) ) return false;
+		if ( noWinByDrop && dropWouldWin( state, piece, square, tone ) ) return false;
+
+		return true;
+
+	} );
+
+}
+
+const hasPieces = ( state, tone ) => state.board.flat().some( ( p ) => p?.tone === tone );
+
+/** Whether a square is next to one of the tone's own pieces, diagonals included. */
+function touches( state, tone, square ) {
+
+	const { col, row } = parseSquare( square );
+
+	for ( let dr = - 1; dr <= 1; dr ++ ) {
+
+		for ( let dc = - 1; dc <= 1; dc ++ ) {
+
+			if ( dr === 0 && dc === 0 ) continue;
+			if ( ! onBoard( col + dc, row + dr ) ) continue;
+			if ( state.board[ row + dr ][ col + dc ]?.tone === tone ) return true;
+
+		}
+
+	}
+
+	return false;
+
+}
+
+/**
+ * Whether dropping here finishes a line — asked by putting the piece down and
+ * taking it straight back off, so it cannot disagree with the real win check.
+ */
+function dropWouldWin( state, piece, square, tone ) {
+
+	const { col, row } = parseSquare( square );
+
+	state.board[ row ][ col ] = piece;
+	const won = lineFrom( state, tone ) !== null;
+	state.board[ row ][ col ] = null;
+
+	return won;
 
 }
 
@@ -316,6 +464,7 @@ export function apply( state, from, to ) {
 	const captured = state.board[ target.row ][ target.col ];
 	if ( captured ) toHand( state, captured );
 
+	piece.cooldown = 0;
 	state.board[ target.row ][ target.col ] = piece;
 
 	state.moveNo ++;
@@ -333,29 +482,130 @@ export function apply( state, from, to ) {
 	// won, and a won game does not pass the turn on.
 	if ( hasLine( state, piece.tone ) ) {
 
-		state.over = true;
-		state.winner = piece.tone;
-
-	} else if ( allMoves( state, other( piece.tone ) ).length === 0 ) {
-
-		// Every piece of theirs is in play and boxed in. The only draw there is.
-		state.over = true;
-		state.winner = null;
-
-	} else {
-
-		state.turn = other( piece.tone );
+		finish( state, piece.tone, ENDINGS.won );
+		return { ok: true, piece, from, to, captured: captured ?? null };
 
 	}
+
+	endTurn( state, piece.tone );
 
 	return { ok: true, piece, from, to, captured: captured ?? null };
 
 }
 
-/** A captured piece goes back to its own slot, which is always the free one. */
+/**
+ * A captured piece goes back to its own slot, which is always the free one — and
+ * has to sit out, so that taking it buys tempo rather than nothing at all.
+ */
 function toHand( state, piece ) {
 
+	piece.cooldown = state.rules.captureCooldown;
 	state.hands[ piece.tone ][ TYPES.indexOf( piece.type ) ] = piece;
+
+}
+
+/**
+ * Closes a turn: cool the mover's own pieces, hand over, then look for the
+ * endings a game nobody is winning needs — the same order the Go engine uses.
+ *
+ * The cooldown ticks at the end of the mover's turn rather than the start of the
+ * next one. Ticking on entry would decrement a piece captured a moment ago before
+ * its owner had a turn to miss, so "sits out one turn" would mean nothing at all.
+ */
+function endTurn( state, mover ) {
+
+	for ( const piece of state.hands[ mover ] ) {
+
+		if ( piece && piece.cooldown > 0 ) piece.cooldown --;
+
+	}
+
+	state.turn = other( mover );
+
+	if ( allMoves( state, state.turn ).length === 0 ) {
+
+		// Boxed in with nothing to place: the player to move has run out of game.
+		finish( state, mover, ENDINGS.noMove );
+		return;
+
+	}
+
+	const key = positionKey( state );
+	state.seen[ key ] = ( state.seen[ key ] ?? 0 ) + 1;
+
+	const { repetitionLimit, maxPlies } = state.rules;
+
+	if ( repetitionLimit > 0 && state.seen[ key ] >= repetitionLimit ) {
+
+		finish( state, null, ENDINGS.repetition );
+
+	} else if ( maxPlies > 0 && state.moveNo >= maxPlies ) {
+
+		finish( state, null, ENDINGS.length );
+
+	}
+
+}
+
+function finish( state, winner, ending ) {
+
+	state.over = true;
+	state.winner = winner;
+	state.ending = ending;
+
+}
+
+/**
+ * The pie rule: on their first turn the second player may take the position the
+ * first player just built instead of answering it. Nothing else fixed the first
+ * move being worth around 65% of decisive games, and this needs no guess at how
+ * much compensation is right — an opening strong enough to be taken is one the
+ * opener stops making.
+ */
+export const canSwap = ( state ) =>
+	state.rules.swapRule === true && state.moveNo === 1 && ! state.over;
+
+export function swap( state ) {
+
+	if ( ! canSwap( state ) ) return { ok: false, reason: 'the position can only be taken on the second player’s first turn' };
+
+	const taker = state.turn;
+
+	// Every piece changes hands. The seats do not move: whoever was playing the
+	// dark set still is, but the position they built is now their opponent's and
+	// they are the one to move with nothing on the board.
+	for ( const row of state.board ) {
+
+		for ( const piece of row ) {
+
+			if ( piece ) piece.tone = other( piece.tone );
+
+		}
+
+	}
+
+	const light = state.hands.light.map( ( p ) => ( p ? { ...p, tone: 'light' } : null ) );
+	const dark = state.hands.dark.map( ( p ) => ( p ? { ...p, tone: 'dark' } : null ) );
+
+	state.hands.light = dark.map( ( p ) => ( p ? { ...p, tone: 'light', id: `light-${p.type}` } : null ) );
+	state.hands.dark = light.map( ( p ) => ( p ? { ...p, tone: 'dark', id: `dark-${p.type}` } : null ) );
+
+	for ( const row of state.board ) {
+
+		for ( const piece of row ) {
+
+			if ( piece ) piece.id = `${piece.tone}-${piece.type}`;
+
+		}
+
+	}
+
+	state.moveNo ++;
+	state.history.unshift( { no: state.moveNo, tone: taker, swapped: true } );
+
+	endTurn( state, taker );
+
+	return { ok: true, taker };
 
 }
 
@@ -365,6 +615,9 @@ function toHand( state, piece ) {
  * would only find the same run from its other end.
  */
 export const hasLine = ( state, tone ) => winningLine( state, tone ) !== null;
+
+/** Same as winningLine, named for the places that only need a yes or no. */
+const lineFrom = ( state, tone ) => winningLine( state, tone );
 
 /** The winning run itself — the squares, in order — or null. */
 export function winningLine( state, tone ) {
@@ -383,7 +636,7 @@ export function winningLine( state, tone ) {
 				while ( onBoard( c, r ) && state.board[ r ][ c ]?.tone === tone ) {
 
 					line.push( squareName( c, r ) );
-					if ( line.length === WIN_LENGTH ) return line;
+					if ( line.length === state.rules.winLength ) return line;
 					r += dr; c += dc;
 
 				}
