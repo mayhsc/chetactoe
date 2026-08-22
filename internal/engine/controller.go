@@ -15,36 +15,40 @@ func StartLocalGame(act <-chan Action, snapshot chan<- GameSnapshot) {
 
 }
 
-func StartBotGame(act <-chan Action, snapshot chan<- GameSnapshot, p Player) {
+func StartBotGame(act <-chan Action, snapshot chan<- GameSnapshot, playerSide Player) {
+	botSide := White
+	if playerSide == White {
+		botSide = Black
+	}
+
 	game := NewGame()
 	snapshot <- game.Snapshot()
 
 	performBotMove := func() {
-		botMove := game.gb.getAllPossibleMoves(game.p)[0]
-
-		s := game.apply(Action{
-			ActionType: Execute,
-			Move:       botMove,
-		})
-
+		if game.p != botSide {
+			return
+		}
+		moves := game.gb.getAllPossibleMoves(game.p)
+		if len(moves) == 0 {
+			return
+		}
+		botMove := moves[0]
+		s := game.applyTrustedMove(botMove)
 		snapshot <- s
 	}
 
-	if p == Black {
-		performBotMove()
-	}
+	performBotMove()
 
 	for action := range act {
 		s := game.apply(action)
 		snapshot <- s
 
-		if s.IsOver || action.ActionType != Execute {
+		if s.IsOver {
 			continue
 		}
 
 		performBotMove()
 	}
-
 }
 
 func StartNetworkGame(act <-chan Action, snapshot chan<- GameSnapshot, conn net.Conn, localPlayer Player) {

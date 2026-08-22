@@ -166,14 +166,14 @@ func (m Model) startLocalGame() (Model, tea.Cmd) {
 }
 
 func (m Model) startBotGame(playerSide engine.Player) (Model, tea.Cmd) {
-	botSide := engine.Black
-	if playerSide == engine.Black {
-		botSide = engine.White
-	}
+	// botSide := engine.Black
+	// if playerSide == engine.Black {
+	// 	botSide = engine.White
+	// }
 
 	move := make(chan engine.Action, 10)
 	snapshot := make(chan engine.GameSnapshot, 10)
-	go engine.StartBotGame(move, snapshot, botSide)
+	go engine.StartBotGame(move, snapshot, playerSide)
 
 	m.screen = ScreenPlaying
 	m.move, m.snapshot = move, snapshot
@@ -784,7 +784,7 @@ func glyphFor(p *engine.Piece) string {
 		{"♙", "♘", "♗", "♖"},
 	}
 
-	return labels[int(p.Player())][int(p.Type())]
+	return labels[int(p.Player)][int(p.Type())]
 }
 
 func playerName(p engine.Player) string {

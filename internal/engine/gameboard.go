@@ -27,13 +27,48 @@ func (gb *GameBaord) movePiece(oldPos Position, newPos Position, p Player) {
 		gb.board.pieces[r1][c1] = nil
 	}
 
-	piece.position = newPos
+	if !toHand {
+		if captured := gb.board.pieces[r2][c2]; captured != nil {
+			gb.board.pieceCount[int(captured.Player)]--
+		}
+	}
+
+	piece.Position = newPos
+
+	if piece.PieceType == Pawn && !toHand {
+		if d, atEdge := edgeDirection(newPos.Row); atEdge {
+			piece.Direction = d
+		} else if inHand {
+			piece.Direction = initialPawnDirection(p)
+		}
+	}
 
 	if toHand {
 		gb.hand[i].Pieces[r2] = piece
 	} else {
 		gb.board.pieces[r2][c2] = piece
+		if inHand {
+			gb.board.pieceCount[i]++
+		}
 	}
+}
+
+func edgeDirection(row int) (Direction, bool) {
+	switch row {
+	case 0:
+		return Down, true
+	case 3:
+		return Up, true
+	default:
+		return None, false
+	}
+}
+
+func initialPawnDirection(p Player) Direction {
+	if p == White {
+		return Down
+	}
+	return Up
 }
 
 func (gb *GameBaord) hasWon(p Player) bool {
@@ -70,7 +105,7 @@ func (gb GameBaord) Print(turn Player) {
 	fmt.Print("Black Hand: ")
 	for _, piece := range gb.hand[1].Pieces {
 		if piece != nil {
-			fmt.Printf("%s ", gb.getLabelForPiece(piece.pieceType, piece.player))
+			fmt.Printf("%s ", gb.getLabelForPiece(piece.PieceType, piece.Player))
 		} else {
 			fmt.Print("_ ")
 		}
@@ -83,7 +118,7 @@ func (gb GameBaord) Print(turn Player) {
 		for c := range 4 {
 			piece := gb.board.pieces[r][c]
 			if piece != nil {
-				fmt.Printf("%s\t", gb.getLabelForPiece(piece.pieceType, piece.player))
+				fmt.Printf("%s\t", gb.getLabelForPiece(piece.PieceType, piece.Player))
 			} else {
 				fmt.Print(".\t")
 			}
@@ -96,7 +131,7 @@ func (gb GameBaord) Print(turn Player) {
 	fmt.Print("White Hand: ")
 	for _, piece := range gb.hand[0].Pieces {
 		if piece != nil {
-			fmt.Printf("%s ", gb.getLabelForPiece(piece.pieceType, piece.player))
+			fmt.Printf("%s ", gb.getLabelForPiece(piece.PieceType, piece.Player))
 		} else {
 			fmt.Print("_ ")
 		}
@@ -126,7 +161,7 @@ func (gb GameBaord) getAllPossibleMoves(p Player) []Move {
 		if piece != nil {
 			for _, placement := range placements {
 				moves = append(moves, Move{
-					Source:       piece.position,
+					Source:      piece.Position,
 					Destination: placement,
 				})
 			}
@@ -135,10 +170,10 @@ func (gb GameBaord) getAllPossibleMoves(p Player) []Move {
 
 	for _, row := range gb.board.pieces {
 		for _, piece := range row {
-			if piece != nil && piece.player == p {
+			if piece != nil && piece.Player == p {
 				for _, destination := range piece.ValidMoves(gb.board) {
 					moves = append(moves, Move{
-						Source:       piece.position,
+						Source:      piece.Position,
 						Destination: destination,
 					})
 

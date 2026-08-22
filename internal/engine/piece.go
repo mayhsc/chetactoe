@@ -12,15 +12,14 @@ func CreatePiece(ptype PieceType, player Player) *Piece {
 	} else {
 		index = -2
 	}
-
 	return &Piece{
-		pieceType: ptype,
-		player:    player,
-		position: Position{
+		PieceType: ptype,
+		Player:    player,
+		Position: Position{
 			Col: index,
 			Row: int(ptype),
 		},
-		direction: None,
+		Direction: None,
 	}
 }
 
@@ -36,56 +35,44 @@ func InitializePieces(player Player) [4]*Piece {
 	return pieces
 }
 
-func (pt PieceType) Moves(position Position, bd Board) []Position {
+func (pt PieceType) Moves(position Position, bd Board, player Player) []Position {
 	var moves []Position
-	var validMoves []Position
 
 	switch pt {
 	case Knight:
 		offsets := []Position{
-			{1, 2},
-			{2, 1},
-			{-1, 2},
-			{-2, 1},
-			{1, -2},
-			{2, -1},
-			{-1, -2},
-			{-2, -1},
+			{1, 2}, {2, 1}, {-1, 2}, {-2, 1},
+			{1, -2}, {2, -1}, {-1, -2}, {-2, -1},
 		}
 
-		addOffset(&moves, offsets, position)
-		for _, move := range moves {
-			if bd.pieces[move.Row][move.Col] == nil {
-				validMoves = append(validMoves, move)
+		var candidates []Position
+		addOffset(&candidates, offsets, position)
+
+		for _, move := range candidates {
+			target := bd.pieces[move.Row][move.Col]
+			if target == nil || target.Player != player {
+				moves = append(moves, move)
 			}
 		}
-		return validMoves
+		return moves
 
 	case Bishop:
 		directions := []Position{
-			{1, 1},
-			{-1, 1},
-			{1, -1},
-			{-1, -1},
+			{1, 1}, {-1, 1}, {1, -1}, {-1, -1},
 		}
-
-		addSlidingMoves(&moves, position, directions, bd)
+		addSlidingMoves(&moves, position, directions, bd, player)
 
 	case Rook:
 		directions := []Position{
-			{1, 0},
-			{-1, 0},
-			{0, 1},
-			{0, -1},
+			{1, 0}, {-1, 0}, {0, 1}, {0, -1},
 		}
-
-		addSlidingMoves(&moves, position, directions, bd)
+		addSlidingMoves(&moves, position, directions, bd, player)
 	}
 
 	return moves
 }
 
-func addSlidingMoves(moves *[]Position, position Position, directions []Position, bd Board) {
+func addSlidingMoves(moves *[]Position, position Position, directions []Position, bd Board, player Player) {
 	for _, dir := range directions {
 		current := position
 
@@ -99,12 +86,16 @@ func addSlidingMoves(moves *[]Position, position Position, directions []Position
 				break
 			}
 
-			if bd.pieces[current.Row][current.Col] == nil {
+			target := bd.pieces[current.Row][current.Col]
+
+			if target == nil {
 				*moves = append(*moves, current)
 				continue
 			}
 
-			*moves = append(*moves, current)
+			if target.Player != player {
+				*moves = append(*moves, current)
+			}
 			break
 		}
 	}
@@ -135,78 +126,51 @@ func contains(moves []Position, pos Position) bool {
 	return slices.Contains(moves, pos)
 }
 
-func (p *Piece) Type() PieceType { return p.pieceType }
-func (p *Piece) Player() Player  { return p.player }
-func (p *Piece) Pos() Position   { return p.position }
+func (p *Piece) Type() PieceType { return p.PieceType }
+func (p *Piece) Pos() Position   { return p.Position }
 
 func (p Piece) ValidMoves(bd Board) []Position {
-	pos := p.position
+	player := int(p.Player)
+	if bd.pieceCount[player] < 3 {
+		return nil
+	}
 
-	if p.pieceType == Pawn {
+	pos := p.Position
+
+	if p.PieceType == Pawn {
 		return p.pawnMoves(pos, bd)
 	}
 
-	return p.pieceType.Moves(pos, bd)
+	return p.PieceType.Moves(pos, bd, p.Player)
 }
 
 func (p Piece) pawnMoves(pos Position, bd Board) []Position {
+	var rowStep int
+	switch p.Direction {
+	case Down:
+		rowStep = 1
+	case Up:
+		rowStep = -1
+	default:
+		return nil
+	}
+
 	var moves []Position
 
-	switch p.direction {
-	case Up:
-		next := Position{
-			Row: pos.Row + 1,
-			Col: pos.Col,
-		}
-		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
-			moves = append(moves, next)
-		}
+	forward := Position{Row: pos.Row + rowStep, Col: pos.Col}
+	if validPosition(forward) && bd.pieces[forward.Row][forward.Col] == nil {
+		moves = append(moves, forward)
+	}
 
-	case Down:
-		next := Position{
-			Row: pos.Row - 1,
-			Col: pos.Col,
+	for _, colOffset := range []int{-1, 1} {
+		diag := Position{Row: pos.Row + rowStep, Col: pos.Col + colOffset}
+		if !validPosition(diag) {
+			continue
 		}
-		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
-			moves = append(moves, next)
+		target := bd.pieces[diag.Row][diag.Col]
+		if target != nil && target.Player != p.Player {
+			moves = append(moves, diag)
 		}
-
-	case Right:
-		next := Position{
-			Row: pos.Row,
-			Col: pos.Col + 1,
-		}
-		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
-			moves = append(moves, next)
-		}
-
-	case Left:
-		next := Position{
-			Row: pos.Row,
-			Col: pos.Col - 1,
-		}
-		if validPosition(next) && bd.pieces[next.Row][next.Col] == nil {
-			moves = append(moves, next)
-		}
-
-	case None:
-		offsets := []Position{
-			{Row: -1, Col: 0},
-			{Row: 0, Col: -1},
-			{Row: 1, Col: 0},
-			{Row: 0, Col: 1},
-		}
-
-		addOffset(&moves, offsets, pos)
-
-		var validMoves []Position
-		for _, move := range moves {
-			if bd.pieces[move.Row][move.Col] == nil {
-				validMoves = append(validMoves, move)
-			}
-		}
-
-		return validMoves
 	}
 
 	return moves

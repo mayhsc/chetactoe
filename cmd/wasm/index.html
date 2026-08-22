@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chetactoe</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <h1>CHETACTOE</h1>
+
+      <div id="screen-menu" class="screen">
+        <p class="prompt">Choose a game mode</p>
+        <div class="menu-options">
+          <button data-mode="local">Local (pass &amp; play)</button>
+          <button data-mode="bot">Vs Bot</button>
+          <button data-mode="network">Network</button>
+        </div>
+      </div>
+
+      <div id="screen-side" class="screen hidden">
+        <p class="prompt">Choose your side</p>
+        <div class="menu-options">
+          <button data-side="white">White</button>
+          <button data-side="black">Black</button>
+        </div>
+        <button id="side-back" class="back-btn">Back</button>
+      </div>
+
+      <div id="screen-network" class="screen hidden">
+        <p class="prompt">Network mode coming soon.</p>
+        <button id="network-back" class="back-btn">Back</button>
+      </div>
+
+      <div id="screen-game" class="screen hidden">
+        <div id="status"></div>
+        <div id="hand-black" class="hand"></div>
+        <div id="board"></div>
+        <div id="hand-white" class="hand"></div>
+      </div>
+    </div>
+    <script src="wasm_exec.js"></script>
+    <script src="app.js"></script>
+    <script>
+      ;(function () {
+        let lastModified = null
+        setInterval(async () => {
+          try {
+            const response = await fetch(window.location.href, {
+              method: "HEAD",
+              cache: "no-cache",
+            })
+            const currentModified = response.headers.get("Last-Modified")
+            if (lastModified && lastModified !== currentModified) {
+              window.location.reload()
+            }
+            lastModified = currentModified
+          } catch (e) {}
+        }, 1000)
+      })()
+    </script>
+  </body>
+</html>

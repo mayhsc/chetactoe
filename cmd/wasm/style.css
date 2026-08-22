@@ -1,0 +1,166 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: #14151f;
+  color: #e4e7eb;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  display: flex;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+#app {
+  width: 420px;
+  text-align: center;
+}
+
+h1 {
+  color: #ff6fa0;
+  letter-spacing: 4px;
+  margin-bottom: 24px;
+}
+
+.screen.hidden {
+  display: none;
+}
+
+.prompt {
+  color: #b8c4d9;
+  margin-bottom: 20px;
+}
+
+.menu-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.menu-options button {
+  background: #1e2030;
+  color: #e4e7eb;
+  border: 2px solid #2a2d40;
+  padding: 14px;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.menu-options button:hover {
+  background: #2a2d40;
+  border-color: #ff6fa0;
+}
+
+.back-btn {
+  margin-top: 24px;
+  background: none;
+  color: #5c6b85;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  text-decoration: underline;
+}
+
+.back-btn:hover {
+  color: #b8c4d9;
+}
+
+#status {
+  color: #f2c14e;
+  font-weight: 600;
+  min-height: 24px;
+  margin-bottom: 16px;
+}
+
+#board {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 4px;
+  background: #0a0b12;
+  border: 2px solid #2a2d3d;
+  border-radius: 8px;
+  padding: 8px;
+  margin: 16px 0;
+}
+
+.cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  background: #1e2030;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background 0.15s,
+    transform 0.1s;
+}
+
+.cell:hover {
+  background: #2a2d40;
+}
+
+.cell.source {
+  background: #c77d22;
+}
+
+.cell.dest {
+  background: #1b7a6e;
+}
+
+.cell.dest:hover {
+  background: #22957f;
+}
+
+.hand {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.hand-slot {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  background: #1e2030;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 2px solid transparent;
+}
+
+.hand-slot:hover {
+  background: #2a2d40;
+}
+
+.hand-slot.empty {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.hand-slot.selected {
+  border-color: #c77d22;
+}
+
+.piece-white {
+  color: #ffffff;
+}
+
+.piece-black {
+  color: #7d8aa0;
+}
+
+button {
+  font-family: inherit;
+}
