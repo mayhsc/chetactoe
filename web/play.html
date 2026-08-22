@@ -21,10 +21,10 @@
 	<body>
 		<div id="unsupported">
 			<div>
-				<strong>WebGPU is not available in this browser.</strong><br />
-				The board is shaded with <code>WoodNodeMaterial</code>, which builds its pore
-				structure from a WGSL function, so it cannot fall back to WebGL.<br />
-				Try Chrome / Edge 113+ or Safari 26+.
+				<strong>The board cannot be drawn here.</strong><br />
+				It is shaded with <code>WoodNodeMaterial</code>, which builds its pore structure
+				from a WGSL function, so it needs WebGPU and cannot fall back to WebGL.<br />
+				<span id="unsupported-why">Try Chrome / Edge 113+ or Safari 26+.</span>
 			</div>
 		</div>
 
@@ -85,17 +85,32 @@
 						</p>
 						<p class="turn-detail">
 							<span id="turn-side">Brown pieces</span><br />
-							Move a piece to continue.
+							<span id="turn-hint">Drag a piece out of the reserve, or tap one to see where it can go.</span>
 						</p>
+
+						<!-- The pie rule, offered on exactly one turn: the second player may
+						     take the position the first player just built instead of
+						     answering it. It is what keeps moving first from being worth
+						     80% of decisive games. -->
+						<button class="swap" id="swap" type="button" hidden>
+							<span>TAKE THIS POSITION</span>
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<path d="M4 8h13M14 5l3 3-3 3" />
+								<path d="M20 16H7M10 13l-3 3 3 3" />
+							</svg>
+						</button>
 					</div>
 
+					<!-- The two reserves. Every piece starts here and none on the board, and
+					     a captured piece comes back to its own socket — so this is both the
+					     opening position and where a piece goes when it leaves the board. -->
 					<section class="roster">
-						<h2>YOUR PIECES</h2>
+						<h2>YOUR PIECES <span class="count" id="roster-you-count">4 IN HAND</span></h2>
 						<div class="roster-row" id="roster-you"></div>
 					</section>
 
 					<section class="roster">
-						<h2>OPPONENT</h2>
+						<h2>OPPONENT <span class="count" id="roster-them-count">4 IN HAND</span></h2>
 						<div class="roster-row" id="roster-them"></div>
 					</section>
 

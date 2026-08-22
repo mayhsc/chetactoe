@@ -3,14 +3,21 @@
 // the page scales off the viewport, so a 2200 px tall window is not a phone. This sets
 // device metrics and captures beyond the viewport instead.
 //
-//   node tools/shot-page.mjs <out.png> <width>x<height> [path]
+//   node tools/shot-page.mjs <out.png> <width>x<height> [path] [setup]
 //   node tools/shot-page.mjs renders/home-mobile.png 430x932
+//
+// `setup` is JS run in the page before the shot, which is how a position gets
+// captured: /play.html now starts with an empty board and every piece in the two
+// reserves, so a screenshot of a game in progress has to play one first.
+//
+//   node tools/shot-page.mjs renders/play.png 1400x950 /play.html \
+//     '__move("dark:knight","B3"); __move("light:rook","C2"); __select("dark:knight")'
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const [ out, size = '430x932', path = '/' ] = process.argv.slice( 2 );
+const [ out, size = '430x932', path = '/', setup = null ] = process.argv.slice( 2 );
 if ( ! out ) {
 
 	console.error( 'usage: node tools/shot-page.mjs <out.png> <WxH> [path]' );
@@ -78,7 +85,23 @@ try {
 	} );
 
 	// the board builds its geometry with CSG at startup; give it time to appear
+	await send( 'Runtime.enable' );
 	await sleep( 9000 );
+
+	if ( setup ) {
+
+		const res = await send( 'Runtime.evaluate', {
+			expression: setup, returnByValue: true, awaitPromise: true,
+		} );
+
+		if ( res.exceptionDetails ) {
+
+			throw new Error( `setup failed: ${res.exceptionDetails.exception?.description ?? 'unknown'}` );
+
+		}
+
+		await sleep( 700 ); // let the settle animation finish
+	}
 
 	const shot = await send( 'Page.captureScreenshot', {
 		format: 'png', captureBeyondViewport: true,

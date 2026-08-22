@@ -3,6 +3,7 @@ import WebGPU from 'three/examples/jsm/capabilities/WebGPU.js';
 
 import { createStage } from './stage.js';
 import { buildBoard, BOARD, HEIGHTS } from './scene.js';
+import { whyNoWebGPU } from './webgpu-why.js';
 
 const THEME_KEY = 'chetactoe-theme';
 
@@ -68,35 +69,20 @@ const SHEETS = {
 			stamped copies.</p>
 			<p>Four pieces means four jobs, and on sixteen squares no piece is spare. The
 			knight is the only one that leaves the ground; the rook is the only one that can
-			cross the board in a move. Losing either changes what you can plan.</p>` ,
-	},
-	rules: {
-		index: '03',
-		title: 'THE RULES',
-		body: `
-			<p>Each turn, do one of two things: <strong>place</strong> a piece from your hand
-			onto any empty square, or <strong>move</strong> a piece already on the board the
-			way that piece moves in chess.</p>
-			<ul>
-				<li><span>01</span> Capture and the piece goes back to its owner&rsquo;s hand,
-				not off the table.</li>
-				<li><span>02</span> Get all four of your pieces in a line — across, down or
-				diagonally — and the game is yours.</li>
-				<li><span>03</span> Nothing else. No castling, no promotion, no clock.</li>
-			</ul>
-			<p>The board in the playground moves freely: pick up any piece, drop it on any
-			empty square. The rules above are the game&rsquo;s, not yet the
-			playground&rsquo;s.</p>` ,
+			cross the board in a move. Neither is ever lost for good — a captured piece goes
+			back to its owner&rsquo;s reserve — but it costs you the turn it sits out.</p>` ,
 	},
 	game: {
 		index: '04',
 		title: 'THE GAME',
 		body: `
-			<p>A line of four is four squares away at all times, for both of you. That makes
-			every placement a threat and every threat answerable, so the game turns on
-			<strong>order</strong> — which piece you commit, and when.</p>
+			<p>Three in a line wins, and you can never finish one by dropping a piece in —
+			it has to be walked in from somewhere. So a threat arrives a turn before it
+			lands, and the game turns on <strong>order</strong>: which piece you commit,
+			and when.</p>
 			<p>Play it slowly. The board rewards reading the position over reacting to it,
-			and a piece held back is a piece the other player has to keep accounting for.</p>` ,
+			and a piece held back is a piece the other player has to keep accounting for.</p>
+			<p><a href="/rules.html">The rules in full &rarr;</a></p>` ,
 	},
 	menu: {
 		index: '',
@@ -105,7 +91,7 @@ const SHEETS = {
 			<nav class="sheet-menu">
 				<a href="#board" data-sheet="board">BOARD<em>01</em></a>
 				<a href="#pieces" data-sheet="pieces">PIECES<em>02</em></a>
-				<a href="#rules" data-sheet="rules">RULES<em>03</em></a>
+				<a href="/rules.html">RULES<em>03</em></a>
 				<a href="#game" data-sheet="game">GAME<em>04</em></a>
 				<a href="/play.html">PLAY<em>&rarr;</em></a>
 			</nav>` ,
@@ -193,6 +179,7 @@ const host = document.getElementById( 'canvas-host' );
 if ( WebGPU.isAvailable() === false ) {
 
 	document.getElementById( 'board-fallback' ).hidden = false;
+	document.getElementById( 'board-fallback-why' ).textContent = whyNoWebGPU();
 	// the toggle still has to work, it just has no scene to push the theme into
 	document.getElementById( 'theme' ).addEventListener( 'click', () => toggleTheme( null ) );
 
