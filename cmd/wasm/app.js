@@ -257,9 +257,13 @@ document.getElementById("network-create").addEventListener("click", () => {
 
       const displayEl = document.getElementById("room-code-display");
       if (displayEl) {
-        displayEl.textContent = currentRoomCode;
+        if (currentRoomCode != null && currentRoomCode !== "") {
+          displayEl.textContent = currentRoomCode;
+          startWebRTCConnection();
+        } else {
+          displayEl.textContent = "Error: Room code not received."
+        }
       }
-
       showScreen("screen-room");
     }
   };
@@ -272,6 +276,36 @@ document.getElementById("room-back").addEventListener("click", () => {
 function getRoomCode() {
   socket.send(JSON.stringify({ type: "create-room" }));
 }
+
+async function startWebRTCConnection() {
+  pc.onicecandidate = (event) => {
+    if (event.candidate && currentRoomCode) {
+      const payload = {
+        type: "host-candidate",
+        roomCode: currentRoomCode,
+        candidate: {
+          candidate: event.candidate.candidate,
+          sdpMid: event.candidate.sdpMid,
+          sdpMLineIndex: event.candidate.sdpMLineIndex,
+          usernameFragment: event.candidate.usernameFragment
+        }
+      };
+
+      socket.send(JSON.stringify(payload));
+    }
+  };
+
+  pc.createDataChannel("chetactoe-data-channel");
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  socket.send(JSON.stringify({
+    type: "offer",
+    roomCode: currentRoomCode,
+    sdp: offer.sdp
+  }));
+}
+
 document.getElementById("network-join").addEventListener("click", () => {
   alert("Network mode is not implemented yet.");
   console.log("Network mode is not implemented yet.");
