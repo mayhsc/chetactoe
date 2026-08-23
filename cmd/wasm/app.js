@@ -229,38 +229,49 @@ const pc = new RTCPeerConnection({
     { urls: "stun:stun.l.google.com:19302" }
   ]
 });
+
 let socket = new WebSocket("ws://localhost:8000");
 
 
+let currentRoomCode = null;
 
 document.getElementById("network-create").addEventListener("click", () => {
-  socket.onopen = () => {
-    console.log("WebSocket connected. Ready to send WebRTC signaling data.");
-  };
+  if (socket.readyState == WebSocket.OPEN) {
+    getRoomCode();
+  } else {
+    socket.onopen = () => {
+      console.log("WebSocket connection established.");
+      getRoomCode();
+    };
+  }
 
   socket.onerror = (error) => {
     console.error("WebSocket error observed:", error);
   };
 
-  pc.onicecandidate = (event) => {
-    if (event.candidate) {
-      socket.send(JSON.stringify({
-        type: "ice-candidate",
-        candidate: event.candidate.toJSON()
-      }));
-    } else {
-      console.log("All local ICE candidates have been gathered.");
+  socket.onmessage = (event) => {
+    const message = JSON.parse(event.data);
+    if (message.type === "room-code") {
+      console.log("MSG:", message);
+      currentRoomCode = message.roomCode;
+
+      const displayEl = document.getElementById("room-code-display");
+      if (displayEl) {
+        displayEl.textContent = currentRoomCode;
+      }
+
+      showScreen("screen-room");
     }
   };
-
-  pc.createDataChannel("user-data");
-  pc.createOffer()
-    .then(offer => pc.setLocalDescription(offer))
-    .catch(err => console.error("Error creating offer:", err));
-
-  console.log("Network mode setup initiated...");
 });
 
+document.getElementById("room-back").addEventListener("click", () => {
+  showScreen("screen-network");
+});
+
+function getRoomCode() {
+  socket.send(JSON.stringify({ type: "create-room" }));
+}
 document.getElementById("network-join").addEventListener("click", () => {
   alert("Network mode is not implemented yet.");
   console.log("Network mode is not implemented yet.");

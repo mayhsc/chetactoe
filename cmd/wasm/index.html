@@ -42,6 +42,18 @@
         <div id="board"></div>
         <div id="hand-white" class="hand"></div>
       </div>
+
+      <div id="screen-room" class="screen hidden">
+        <p class="prompt">Your Room Code:</p>
+        <h2
+          id="room-code-display"
+          style="letter-spacing: 2px; color: #333"
+        ></h2>
+        <p class="prompt" style="font-size: 0.9rem; color: #666">
+          Share this code with your peer to connect.
+        </p>
+        <button id="room-back" class="back-btn">Back</button>
+      </div>
     </div>
     <script src="wasm_exec.js"></script>
     <script src="app.js"></script>
