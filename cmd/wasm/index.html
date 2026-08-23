@@ -29,6 +29,10 @@
 
       <div id="screen-network" class="screen hidden">
         <p class="prompt">Network mode coming soon.</p>
+        <div class="menu-options">
+          <button id="network-create">Create Game</button>
+          <button id="network-join">Join Game</button>
+        </div>
         <button id="network-back" class="back-btn">Back</button>
       </div>
 
@@ -43,19 +47,24 @@
     <script src="app.js"></script>
     <script>
       ;(function () {
-        let lastModified = null
+        const watched = ["app.js", "style.css", "bin/chetactoe.wasm"]
+        let lastModifiedMap = {}
+
         setInterval(async () => {
-          try {
-            const response = await fetch(window.location.href, {
-              method: "HEAD",
-              cache: "no-cache",
-            })
-            const currentModified = response.headers.get("Last-Modified")
-            if (lastModified && lastModified !== currentModified) {
-              window.location.reload()
-            }
-            lastModified = currentModified
-          } catch (e) {}
+          for (const file of watched) {
+            try {
+              const response = await fetch(file, {
+                method: "HEAD",
+                cache: "no-cache",
+              })
+              const current = response.headers.get("Last-Modified")
+              if (lastModifiedMap[file] && lastModifiedMap[file] !== current) {
+                window.location.reload()
+                return
+              }
+              lastModifiedMap[file] = current
+            } catch (e) {}
+          }
         }, 1000)
       })()
     </script>
