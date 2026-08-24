@@ -45,14 +45,50 @@
 
       <div id="screen-room" class="screen hidden">
         <p class="prompt">Your Room Code:</p>
-        <h2
-          id="room-code-display"
-          style="letter-spacing: 2px; color: #333"
-        ></h2>
-        <p class="prompt" style="font-size: 0.9rem; color: #666">
-          Share this code with your peer to connect.
+        <h2 id="room-code-display"></h2>
+        <p id="host-status" class="prompt room-subtext">
+          Waiting for peer to join...
         </p>
         <button id="room-back" class="back-btn">Back</button>
+      </div>
+
+      <div id="screen-join" class="screen hidden">
+        <p class="prompt">Enter Room Code</p>
+        <div class="input-group">
+          <input
+            type="text"
+            id="join-code-input"
+            maxlength="5"
+            placeholder="ABCDE"
+          />
+          <button id="join-submit">Join</button>
+        </div>
+        <p id="join-error"></p>
+        <button id="join-back" class="back-btn">Back</button>
+      </div>
+
+      <div id="screen-join" class="screen hidden">
+        <p class="prompt">Enter Room Code</p>
+        <div class="input-group">
+          <input
+            type="text"
+            id="join-code-input"
+            maxlength="5"
+            placeholder="ABCDE"
+          />
+          <button id="join-submit">Join</button>
+        </div>
+        <p id="peer-status" class="prompt room-subtext"></p>
+        <p id="join-error"></p>
+        <button id="join-back" class="back-btn">Back</button>
+      </div>
+
+      <div id="screen-peer-wait" class="screen hidden">
+        <p class="prompt">Joined Room!</p>
+        <div class="status-box">
+          <p class="room-subtext">Waiting for host to initiate connection...</p>
+        </div>
+        <button id="peer-wait-back" class="back-btn">Cancel</button>
       </div>
     </div>
     <script src="wasm_exec.js"></script>

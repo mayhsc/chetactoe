@@ -248,28 +248,49 @@ document.getElementById("network-create").addEventListener("click", () => {
   socket.onerror = (error) => {
     console.error("WebSocket error observed:", error);
   };
-
-  socket.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    if (message.type === "room-code") {
-      console.log("MSG:", message);
-      currentRoomCode = message.roomCode;
-
-      const displayEl = document.getElementById("room-code-display");
-      if (displayEl) {
-        if (currentRoomCode != null && currentRoomCode !== "") {
-          displayEl.textContent = currentRoomCode;
-          startWebRTCConnection();
-        } else {
-          displayEl.textContent = "Error: Room code not received."
-        }
-      }
-      showScreen("screen-room");
-    }
-  };
 });
 
+socket.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+
+  if (message.type === "room-code") {
+    currentRoomCode = message.roomCode;
+    const displayEl = document.getElementById("room-code-display");
+    if (displayEl) {
+      if (currentRoomCode) {
+        displayEl.textContent = currentRoomCode;
+        // startWebRTCConnection();
+      } else {
+        displayEl.textContent = "Error";
+      }
+    }
+    showScreen("screen-room");
+  }
+
+  else if (message.type === "wait") {
+    showScreen("screen-peer-wait");
+  }
+
+  else if (message.type === "peer-joined") {
+    const statusEl = document.getElementById("host-status");
+    if (statusEl) {
+      statusEl.textContent = "Peer connected! Establishing WebRTC connection...";
+    }
+  }
+
+  else if (message.type === "error") {
+    const errorEl = document.getElementById("join-error");
+    if (errorEl) {
+      errorEl.textContent = message.message || "An error occurred.";
+    }
+  }
+};
+
 document.getElementById("room-back").addEventListener("click", () => {
+  showScreen("screen-network");
+});
+
+document.getElementById("peer-wait-back").addEventListener("click", () => {
   showScreen("screen-network");
 });
 
@@ -307,10 +328,31 @@ async function startWebRTCConnection() {
 }
 
 document.getElementById("network-join").addEventListener("click", () => {
-  alert("Network mode is not implemented yet.");
-  console.log("Network mode is not implemented yet.");
-
+  document.getElementById("join-code-input").value = "";
+  document.getElementById("join-error").textContent = "";
+  showScreen("screen-join");
 });
 
+document.getElementById("join-back").addEventListener("click", () => {
+  showScreen("screen-network");
+});
+
+document.getElementById("join-submit").addEventListener("click", () => {
+  const inputEl = document.getElementById("join-code-input");
+  const errorEl = document.getElementById("join-error");
+  const roomCode = inputEl.value.trim().toUpperCase();
+
+  if (roomCode.length !== 5) {
+    errorEl.textContent = "Room code must be exactly 5 characters.";
+    return;
+  }
+
+  errorEl.textContent = "";
+
+  socket.send(JSON.stringify({
+    type: "join-room",
+    roomCode: roomCode
+  }));
+});
 
 showScreen("screen-menu");
