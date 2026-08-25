@@ -259,7 +259,6 @@ socket.onmessage = (event) => {
     if (displayEl) {
       if (currentRoomCode) {
         displayEl.textContent = currentRoomCode;
-        // startWebRTCConnection();
       } else {
         displayEl.textContent = "Error";
       }
@@ -276,6 +275,7 @@ socket.onmessage = (event) => {
     if (statusEl) {
       statusEl.textContent = "Peer connected! Establishing WebRTC connection...";
     }
+    startWebRTCConnection();
   }
 
   else if (message.type === "error") {
@@ -284,7 +284,66 @@ socket.onmessage = (event) => {
       errorEl.textContent = message.message || "An error occurred.";
     }
   }
+
+  else if (message.type === "offer") {
+    const offer = {
+      type: "offer",
+      sdp: message.sdp
+    };
+
+    pc.setRemoteDescription(new RTCSessionDescription(offer)).then(async () => {
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      socket.send(JSON.stringify({
+        type: "answer",
+        roomCode: message.roomCode,
+        sdp: answer.sdp
+      }));
+    });
+  }
+
+  else if (message.type === "ice-candidate") {
+    const candidate = new RTCIceCandidate(message.candidate);
+    pc.addIceCandidate(candidate);
+  }
+
+  else if (message.type === "answer") {
+    const answer = {
+      type: "answer",
+      sdp: message.sdp
+    };
+    pc.setRemoteDescription(new RTCSessionDescription(answer));
+  }
 };
+
+pc.onconnectionstatechange = () => {
+  if (pc.connectionState === "connected") {
+    console.log("WebRTC connection established.");
+    beginGame("network");
+  } else if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+    console.log("WebRTC connection lost.");
+    showScreen("screen-network");
+  }
+}
+
+pc.onicecandidate = (event) => {
+  if (event.candidate && currentRoomCode) {
+    const payload = {
+      type: "ice-candidate",
+      roomCode: currentRoomCode,
+      candidate: {
+        candidate: event.candidate.candidate,
+        sdpMid: event.candidate.sdpMid,
+        sdpMLineIndex: event.candidate.sdpMLineIndex,
+        usernameFragment: event.candidate.usernameFragment
+      }
+    };
+
+    socket.send(JSON.stringify(payload));
+  }
+};
+
 
 document.getElementById("room-back").addEventListener("click", () => {
   showScreen("screen-network");
@@ -299,23 +358,6 @@ function getRoomCode() {
 }
 
 async function startWebRTCConnection() {
-  pc.onicecandidate = (event) => {
-    if (event.candidate && currentRoomCode) {
-      const payload = {
-        type: "host-candidate",
-        roomCode: currentRoomCode,
-        candidate: {
-          candidate: event.candidate.candidate,
-          sdpMid: event.candidate.sdpMid,
-          sdpMLineIndex: event.candidate.sdpMLineIndex,
-          usernameFragment: event.candidate.usernameFragment
-        }
-      };
-
-      socket.send(JSON.stringify(payload));
-    }
-  };
-
   pc.createDataChannel("chetactoe-data-channel");
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
