@@ -19,11 +19,11 @@ func NewPeer(conn net.Conn) *NetworkPeer {
 	}
 }
 
-func (p *NetworkPeer) sendMove(m Move) error {
+func (p *NetworkPeer) SendMove(m Move) error {
 	return p.enc.Encode(m)
 }
 
-func (p *NetworkPeer) receiveMoves(out chan<- Move) {
+func (p *NetworkPeer) ReceiveMoves(out chan<- Move) {
 	defer close(out)
 	for {
 		var m Move

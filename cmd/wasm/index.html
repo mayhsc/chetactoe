@@ -29,6 +29,10 @@
 
       <div id="screen-network" class="screen hidden">
         <p class="prompt">Network mode coming soon.</p>
+        <div class="menu-options">
+          <button id="network-create">Create Game</button>
+          <button id="network-join">Join Game</button>
+        </div>
         <button id="network-back" class="back-btn">Back</button>
       </div>
 
@@ -38,24 +42,70 @@
         <div id="board"></div>
         <div id="hand-white" class="hand"></div>
       </div>
+
+      <div id="screen-room" class="screen hidden">
+        <p class="prompt">Your Room Code:</p>
+        <h2 id="room-code-display"></h2>
+        <p id="host-status" class="prompt room-subtext">
+          Waiting for peer to join...
+        </p>
+        <button id="room-back" class="back-btn">Back</button>
+      </div>
+
+      <div id="screen-join" class="screen hidden">
+        <p class="prompt">Enter Room Code</p>
+        <div class="input-group">
+          <input
+            type="text"
+            id="join-code-input"
+            maxlength="5"
+            placeholder="ABCDE"
+          />
+          <button id="join-submit">Join</button>
+        </div>
+        <p id="peer-status" class="prompt room-subtext"></p>
+        <p id="join-error"></p>
+        <button id="join-back" class="back-btn">Back</button>
+      </div>
+
+      <div id="screen-peer-wait" class="screen hidden">
+        <p class="prompt">Joined Room!</p>
+        <div class="status-box">
+          <p class="room-subtext">Waiting for host to initiate connection...</p>
+        </div>
+        <button id="peer-wait-back" class="back-btn">Cancel</button>
+      </div>
+
+      <div id="screen-peer-wait" class="screen hidden">
+        <p class="prompt">Joined Room!</p>
+        <div class="status-box">
+          <p class="room-subtext">Waiting for host to initiate connection...</p>
+        </div>
+        <button id="peer-wait-back" class="back-btn">Cancel</button>
+      </div>
     </div>
     <script src="wasm_exec.js"></script>
     <script src="app.js"></script>
     <script>
       ;(function () {
-        let lastModified = null
+        const watched = ["app.js", "style.css", "bin/chetactoe.wasm"]
+        let lastModifiedMap = {}
+
         setInterval(async () => {
-          try {
-            const response = await fetch(window.location.href, {
-              method: "HEAD",
-              cache: "no-cache",
-            })
-            const currentModified = response.headers.get("Last-Modified")
-            if (lastModified && lastModified !== currentModified) {
-              window.location.reload()
-            }
-            lastModified = currentModified
-          } catch (e) {}
+          for (const file of watched) {
+            try {
+              const response = await fetch(file, {
+                method: "HEAD",
+                cache: "no-cache",
+              })
+              const current = response.headers.get("Last-Modified")
+              if (lastModifiedMap[file] && lastModifiedMap[file] !== current) {
+                window.location.reload()
+                return
+              }
+              lastModifiedMap[file] = current
+            } catch (e) {}
+          }
         }, 1000)
       })()
     </script>

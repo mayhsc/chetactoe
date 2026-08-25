@@ -224,4 +224,201 @@ document.getElementById("network-back").addEventListener("click", () => {
   showScreen("screen-menu");
 });
 
+const rtcConfig = {
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+};
+
+const pc = new RTCPeerConnection(rtcConfig);
+const socket = new WebSocket("ws://localhost:8000");
+
+let currentRoomCode = null;
+let dataChannel = null;
+let gameStarted = false;
+
+
+socket.onopen = () => {
+  console.log("WebSocket connection established.");
+};
+
+socket.onerror = (error) => {
+  console.error("WebSocket error observed:", error);
+};
+
+socket.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+
+  switch (message.type) {
+    case "room-code":
+      handleRoomCode(message);
+      break;
+    case "wait":
+      showScreen("screen-peer-wait");
+      break;
+    case "peer-joined":
+      handlePeerJoined();
+      break;
+    case "error":
+      handleSignalError(message);
+      break;
+    case "offer":
+      handleOffer(message);
+      break;
+    case "answer":
+      pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: message.sdp }));
+      break;
+    case "ice-candidate":
+      pc.addIceCandidate(new RTCIceCandidate(message.candidate));
+      break;
+  }
+};
+
+function handleRoomCode(message) {
+  currentRoomCode = message.roomCode;
+  const displayEl = document.getElementById("room-code-display");
+  if (displayEl) {
+    displayEl.textContent = currentRoomCode || "Error";
+  }
+  showScreen("screen-room");
+}
+
+function handlePeerJoined() {
+  const statusEl = document.getElementById("host-status");
+  if (statusEl) {
+    statusEl.textContent = "Peer connected! Establishing WebRTC connection...";
+  }
+  startWebRTCConnection();
+}
+
+function handleSignalError(message) {
+  const errorEl = document.getElementById("join-error");
+  if (errorEl) {
+    errorEl.textContent = message.message || "An error occurred.";
+  }
+}
+
+async function handleOffer(message) {
+  await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: message.sdp }));
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+
+  socket.send(JSON.stringify({
+    type: "answer",
+    roomCode: message.roomCode,
+    sdp: answer.sdp,
+  }));
+}
+
+// ---------- peer connection lifecycle ----------
+
+pc.onicecandidate = (event) => {
+  if (event.candidate && currentRoomCode) {
+    socket.send(JSON.stringify({
+      type: "ice-candidate",
+      roomCode: currentRoomCode,
+      candidate: {
+        candidate: event.candidate.candidate,
+        sdpMid: event.candidate.sdpMid,
+        sdpMLineIndex: event.candidate.sdpMLineIndex,
+        usernameFragment: event.candidate.usernameFragment,
+      },
+    }));
+  }
+};
+
+pc.ondatachannel = (event) => {
+  setupDataChannel(event.channel);
+};
+
+pc.onconnectionstatechange = () => {
+  console.log("WebRTC connection state:", pc.connectionState);
+  if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+    gameStarted = false;
+    showScreen("screen-network");
+  }
+};
+
+function setupDataChannel(channel) {
+  dataChannel = channel;
+
+  channel.onopen = () => {
+    console.log("Data channel is open.");
+    startGameOnce();
+  };
+
+  channel.onmessage = (event) => {
+    onSnapshot(event.data);
+  };
+
+  channel.onclose = () => {
+    console.log("Data channel is closed.");
+    gameStarted = false;
+    showScreen("screen-network");
+  };
+}
+
+function startGameOnce() {
+  if (gameStarted) return;
+  gameStarted = true;
+  beginGame("network");
+}
+
+async function startWebRTCConnection() {
+  const channel = pc.createDataChannel("chetactoe-data-channel");
+  setupDataChannel(channel);
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  socket.send(JSON.stringify({
+    type: "offer",
+    roomCode: currentRoomCode,
+    sdp: offer.sdp,
+  }));
+}
+
+
+function getRoomCode() {
+  socket.send(JSON.stringify({ type: "create-room" }));
+}
+
+document.getElementById("network-create").addEventListener("click", () => {
+  if (socket.readyState === WebSocket.OPEN) {
+    getRoomCode();
+  } else {
+    socket.addEventListener("open", getRoomCode, { once: true });
+  }
+});
+
+document.getElementById("network-join").addEventListener("click", () => {
+  document.getElementById("join-code-input").value = "";
+  document.getElementById("join-error").textContent = "";
+  showScreen("screen-join");
+});
+
+document.getElementById("join-submit").addEventListener("click", () => {
+  const inputEl = document.getElementById("join-code-input");
+  const errorEl = document.getElementById("join-error");
+  const roomCode = inputEl.value.trim().toUpperCase();
+
+  if (roomCode.length !== 5) {
+    errorEl.textContent = "Room code must be exactly 5 characters.";
+    return;
+  }
+
+  errorEl.textContent = "";
+  socket.send(JSON.stringify({ type: "join-room", roomCode }));
+});
+
+document.getElementById("room-back").addEventListener("click", () => {
+  showScreen("screen-network");
+});
+
+document.getElementById("peer-wait-back").addEventListener("click", () => {
+  showScreen("screen-network");
+});
+
+document.getElementById("join-back").addEventListener("click", () => {
+  showScreen("screen-network");
+});
+
 showScreen("screen-menu");
