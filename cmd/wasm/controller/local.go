@@ -28,7 +28,7 @@ func StartGame(this js.Value, args []js.Value) interface{} {
 
 	go func() {
 		for snap := range snapChan {
-			onSnapshot.Invoke(mapSnapshotToJson(snap))
+			deliver(onSnapshot, mapSnapshotToJson(snap))
 		}
 	}()
 
@@ -48,6 +48,24 @@ func StartGame(this js.Value, args []js.Value) interface{} {
 			return nil
 		}),
 	})
+}
+
+// deliver hands one snapshot to the page.
+//
+// The recover matters more than it looks: js.Value.Invoke turns a JavaScript
+// exception into a Go panic, and a panic in this goroutine takes the whole
+// WebAssembly program with it. A typo in the client's render function was enough
+// to kill the engine mid-game, and the only symptom was every later action
+// failing with "Go program has already exited" — which points nowhere near the
+// actual mistake.
+func deliver(onSnapshot js.Value, payload string) {
+	defer func() {
+		if r := recover(); r != nil {
+			js.Global().Get("console").Call("error", "chetactoe: the page threw while drawing a snapshot:", r)
+		}
+	}()
+
+	onSnapshot.Invoke(payload)
 }
 
 func mapActionToStruct(jsData string) (engine.Action, error) {

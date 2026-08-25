@@ -61,6 +61,12 @@ export function squareAt( x, z, board = BOARD ) {
  * Each piece gets its own material so it can have its own grain phase — a set cut
  * from one blank reads as stamped copies otherwise. Only the transform uniform
  * differs between them, so they still share a shader program.
+ *
+ * A spec with no `square` is a piece that is not in play. Its mesh is still built
+ * — every piece is made once, at startup, and the eight of them are the eight for
+ * the whole game — but it is hidden until something puts it on a square. The
+ * reserve is drawn in the panel, as icons, so a hidden mesh is not a missing
+ * piece: `app.js` keeps the two in step.
  */
 export function buildBoard( scene, layout = [] ) {
 
@@ -83,12 +89,29 @@ export function buildBoard( scene, layout = [] ) {
 		} );
 
 		const mesh = createPiece( spec.type, material, { rotation: spec.turn ?? 0 } );
-		const { col, row } = spec.square ? parseSquare( spec.square ) : spec;
+
+		Object.assign( mesh.userData, {
+			id: spec.id ?? `${spec.tone}-${spec.type}`,
+			tone: spec.tone,
+			type: spec.type,
+			// A spec may name its square or give the cell directly; neither means the
+			// piece is not in play.
+			square: spec.square ?? ( spec.col === undefined ? null : squareName( spec.col, spec.row ) ),
+		} );
+
+		if ( mesh.userData.square === null ) {
+
+			// Not in play. Parked on A1 so it has a defined transform, but hidden,
+			// and never raycast against while it is.
+			mesh.visible = false;
+
+		}
+
+		const { col, row } = mesh.userData.square ? parseSquare( mesh.userData.square ) : { col: 0, row: 0 };
 		const [ x, z ] = cellCentre( col, row );
 		// the piece's origin is the underside of its base and the board's top face is
 		// y = 0, so placing one is just this
 		mesh.position.set( x, 0, z );
-		mesh.userData.square = spec.square;
 		pieces.add( mesh );
 
 	} );

@@ -91,7 +91,7 @@ func TestIsWinningState(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual := tt.board.isWinningState(tt.player)
+			actual := tt.board.isWinningState(tt.player, 4)
 			if actual != tt.expected {
 				t.Errorf("isWinningState() = %v, expected %v", actual, tt.expected)
 			}
@@ -100,35 +100,116 @@ func TestIsWinningState(t *testing.T) {
 }
 
 func TestGetAllPossibleMoves(t *testing.T) {
-	gb := initializeGameBoard()
+	// Legacy rules, so placements are unrestricted and the arithmetic below is
+	// just "every piece in hand times every empty square".
+	gb := initializeGameBoard(LegacyRules())
 
 	whiteMoves := gb.getAllPossibleMoves(White)
-	expectedWhiteInitialDrops := 4 * 16
-	if len(whiteMoves) != expectedWhiteInitialDrops {
-		t.Errorf("Expected %d initial moves for White, got %d", expectedWhiteInitialDrops, len(whiteMoves))
+	if expected := 4 * 16; len(whiteMoves) != expected {
+		t.Errorf("expected %d opening moves for White, got %d", expected, len(whiteMoves))
 	}
 
-	pawnPiece := gb.hand[0].Pieces[0]
-	gb.hand[0].Pieces[0] = nil
-	pawnPiece.Position = Position{Row: 1, Col: 1}
-	pawnPiece.Direction = Up
-	gb.board.pieces[1][1] = pawnPiece
-
-	whiteMovesAfterDrop := gb.getAllPossibleMoves(White)
-	expectedMoves := 45 + 1
-	if len(whiteMovesAfterDrop) != expectedMoves {
-		t.Errorf("Expected %d total moves after dropping a piece, got %d", expectedMoves, len(whiteMovesAfterDrop))
+	// Placed through movePiece rather than written into the array, because that is
+	// what maintains pieceCount and gives a pawn its facing. Writing the piece in
+	// directly leaves the count at zero, and MinPiecesToMove then blocks every
+	// move — which is what this test used to trip over.
+	drop := func(slot int, to Position) {
+		t.Helper()
+		gb.movePiece(Position{Row: slot, Col: handCol(White)}, to, White)
 	}
 
-	foundPawnMove := false
-	for _, m := range whiteMovesAfterDrop {
-		if m.Source.Row == 1 && m.Source.Col == 1 && m.Destination.Row == 2 && m.Destination.Col == 1 {
-			foundPawnMove = true
+	drop(int(Pawn), Position{Row: 1, Col: 1})
+	drop(int(Knight), Position{Row: 3, Col: 3})
+	drop(int(Bishop), Position{Row: 3, Col: 0})
+
+	if got := gb.board.pieceCount[int(White)]; got != 3 {
+		t.Fatalf("three pieces should be in play, pieceCount says %d", got)
+	}
+
+	pawn := gb.board.pieces[1][1]
+	if pawn == nil || pawn.PieceType != Pawn {
+		t.Fatalf("(1,1) should hold the pawn, holds %v", pawn)
+	}
+
+	// A pawn placed by White faces down the board; forward is one row on.
+	step := 1
+	if pawn.Direction == Up {
+		step = -1
+	}
+
+	forward := Position{Row: 1 + step, Col: 1}
+
+	moves := gb.getAllPossibleMoves(White)
+
+	found := false
+	for _, m := range moves {
+		if m.Source == (Position{Row: 1, Col: 1}) && m.Destination == forward {
+			found = true
 			break
 		}
 	}
 
-	if !foundPawnMove {
-		t.Errorf("Expected to find the valid board move for the pawn from (1,1) to (2,1), but it was missing")
+	if !found {
+		t.Errorf("the pawn on (1,1) facing %v should be able to step to %v; moves were %v",
+			pawn.Direction, forward, moves)
+	}
+}
+
+// TestRulesReachTheBoard guards a failure that is invisible from the outside: if
+// the ruleset does not make it onto the board, move generation silently falls
+// back to the zero value — no drop restrictions, no cooldown, captures permanent
+// — and completely different rulesets measure identically.
+func TestRulesReachTheBoard(t *testing.T) {
+	rules := DefaultRules()
+	gb := initializeGameBoard(rules)
+
+	if gb.board.rules != rules {
+		t.Fatalf("the board is playing %+v, not %+v", gb.board.rules, rules)
+	}
+
+	g := NewGameWithRules(LegacyRules())
+	if g.gb.board.rules.WinLength != LegacyRules().WinLength {
+		t.Errorf("NewGameWithRules did not carry its rules to the board")
+	}
+}
+
+// TestDropRulesActuallyRestrict is the behavioural half of the above: two
+// rulesets that differ only in the drop rules must not offer the same moves.
+func TestDropRulesActuallyRestrict(t *testing.T) {
+	loose := DefaultRules()
+	loose.NoWinByDrop = false
+	loose.DropMustTouchOwn = false
+
+	// Built explicitly rather than taken from DefaultRules, which does not have
+	// these on: at four in a line they measured worse than leaving them off.
+	strict := DefaultRules()
+	strict.NoWinByDrop = true
+	strict.DropMustTouchOwn = true
+
+	place := func(g *Game, from, to Position) {
+		t.Helper()
+		g.applyTrustedMove(Move{Source: from, Destination: to})
+	}
+
+	// One piece each in a corner, then count what the next placement may do.
+	counts := map[string]int{}
+
+	for name, rules := range map[string]RuleSet{"loose": loose, "strict": strict} {
+		g := NewGameWithRules(rules)
+
+		place(g, Position{Row: int(Rook), Col: handCol(White)}, Position{Row: 0, Col: 0})
+		place(g, Position{Row: int(Rook), Col: handCol(Black)}, Position{Row: 3, Col: 3})
+
+		counts[name] = len(g.gb.getValidPlacements(g.gb.handPiece(White, int(Pawn)), White))
+	}
+
+	if counts["strict"] >= counts["loose"] {
+		t.Errorf("the drop rules are not restricting anything: strict offered %d placements, loose %d",
+			counts["strict"], counts["loose"])
+	}
+
+	// Touching the rook on (0,0) leaves exactly three squares.
+	if counts["strict"] != 3 {
+		t.Errorf("with a rook on (0,0), a placement should have 3 squares to touch, got %d", counts["strict"])
 	}
 }

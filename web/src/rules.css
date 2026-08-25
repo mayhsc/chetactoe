@@ -1,0 +1,347 @@
+/*
+ * The rules page.
+ *
+ * It borrows the palette, the type and the topbar from `app.css` rather than
+ * restating them — one design system, three pages — and adds only what a
+ * document needs that the game shell does not: a reading measure, a numbered
+ * rail, and the little boards.
+ *
+ * The diagrams use the game's own marker colours, so green, amber and red mean
+ * the same thing here as they do under your pointer on the real board.
+ */
+
+:root {
+	--mark-free: #5f7040;
+	--mark-capture: #a8784a;
+	--mark-blocked: #a8574a;
+
+	--square-light: #efe4d1;
+	--square-dark: #dcc7a8;
+}
+
+[data-theme='dark'] {
+	--mark-free: #8fa663;
+	--mark-capture: #c99a63;
+	--mark-blocked: #c4796a;
+
+	--square-light: #3a3126;
+	--square-dark: #2c251c;
+}
+
+/* app.css pins the shell to the viewport; a document has to be able to grow. */
+html, body { height: auto; min-height: 100%; }
+
+body { overflow-y: scroll; } /* no reflow when a short page becomes a long one */
+
+.doc {
+	max-width: 1080px;
+	margin: 0 auto;
+	padding: clamp(20px, 2.4vw, 34px) var(--gutter) clamp(64px, 8vw, 120px);
+	display: flex;
+	flex-direction: column;
+	gap: clamp(44px, 6vw, 86px);
+}
+
+/* ------------------------------------------------------------------ topbar */
+
+.doc-top {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	padding-bottom: clamp(16px, 1.8vw, 24px);
+	border-bottom: 1px solid var(--rule);
+}
+
+/* --------------------------------------------------------------------- hero */
+
+.hero { display: flex; flex-direction: column; gap: clamp(20px, 2.6vw, 30px); }
+
+.hero h1 {
+	margin: 0;
+	font-size: clamp(38px, 8vw, 88px);
+	font-weight: 500;
+	line-height: .96;
+	letter-spacing: .04em;
+	text-wrap: balance;
+}
+
+.hero .lede {
+	margin: 0;
+	max-width: 46ch;
+	font-size: clamp(16px, 1.7vw, 21px);
+	line-height: 1.6;
+	color: var(--ink-soft);
+}
+
+/* The four facts that decide whether you want to play at all. */
+.facts {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	gap: 1px;
+	background: var(--rule);
+	border: 1px solid var(--rule);
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.facts div { background: var(--card); padding: 18px 20px; }
+
+.facts dt {
+	font-size: 10.5px;
+	letter-spacing: .2em;
+	color: var(--ink-faint);
+	margin: 0 0 10px;
+}
+
+.facts dd {
+	margin: 0;
+	font-size: clamp(19px, 2.4vw, 26px);
+	line-height: 1.1;
+	font-variant-numeric: tabular-nums;
+}
+
+.facts dd small { display: block; margin-top: 7px; font-size: 12.5px; letter-spacing: .04em; color: var(--ink-soft); }
+
+/* ------------------------------------------------------------------ contents */
+
+.contents {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0 clamp(18px, 2.6vw, 34px);
+	padding-top: 4px;
+	font-size: 11.5px;
+	letter-spacing: .16em;
+}
+
+.contents a { color: var(--ink-faint); text-decoration: none; padding: 6px 0; transition: color .2s ease; }
+.contents a:hover, .contents a:focus-visible { color: var(--accent); }
+.contents a em { font-style: normal; color: var(--ink-faint); margin-right: .7em; }
+
+/* ----------------------------------------------------------------- sections */
+
+.rule {
+	display: grid;
+	grid-template-columns: 5.5rem minmax(0, 1fr);
+	gap: clamp(18px, 3vw, 40px);
+	padding-top: clamp(26px, 3.4vw, 40px);
+	border-top: 1px solid var(--rule);
+	scroll-margin-top: 24px;
+}
+
+.rule > .rule-no {
+	font-size: 12px;
+	letter-spacing: .2em;
+	color: var(--accent);
+	font-variant-numeric: tabular-nums;
+	padding-top: 6px;
+}
+
+.rule-body { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+.rule h2 {
+	margin: 0;
+	font-size: clamp(21px, 3vw, 31px);
+	font-weight: 500;
+	letter-spacing: .06em;
+	line-height: 1.15;
+	text-wrap: balance;
+}
+
+.rule p { margin: 0; max-width: 58ch; font-size: clamp(14.5px, 1.5vw, 16.5px); line-height: 1.7; color: var(--ink-soft); }
+.rule p strong { color: var(--ink); font-weight: 600; }
+
+.rule .aside {
+	border-left: 2px solid var(--accent);
+	padding: 2px 0 2px 18px;
+	font-size: 14px;
+	color: var(--ink-faint);
+	max-width: 56ch;
+}
+
+/* ------------------------------------------------------------------- boards */
+
+.figures { display: flex; flex-wrap: wrap; gap: clamp(18px, 2.6vw, 32px); }
+
+figure { margin: 0; display: flex; flex-direction: column; gap: 11px; }
+
+figcaption { font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); max-width: 25ch; }
+figcaption b { color: var(--ink); font-weight: 600; }
+
+/* A 4x4 board, checkered like the real one, at whatever size the section wants. */
+.mini {
+	--cell: clamp(38px, 5.4vw, 52px);
+	display: grid;
+	grid-template-columns: repeat(4, var(--cell));
+	border: 1px solid var(--rule);
+	border-radius: 3px;
+	overflow: hidden;
+	background: var(--rule);
+	gap: 1px;
+	width: max-content;
+}
+
+.mini span {
+	position: relative;
+	width: var(--cell);
+	height: var(--cell);
+	background: var(--square-light);
+	display: grid;
+	place-items: center;
+}
+
+/* The real board alternates, and so does this one. Written out rather than
+   derived: on a 4-wide grid the dark squares are children 2, 4, 5, 7, 10, 12, 13
+   and 15, and an nth-child formula that says so is longer than the list. */
+.mini span:is(
+	:nth-child(2), :nth-child(4), :nth-child(5), :nth-child(7),
+	:nth-child(10), :nth-child(12), :nth-child(13), :nth-child(15)
+) { background: var(--square-dark); }
+
+.mini img { width: 74%; height: auto; display: block; }
+
+/*
+ * Markers, in the game's own colours: where you may go, what you may take, and
+ * what is refused.
+ *
+ * Data attributes rather than classes, deliberately. This page loads `app.css`
+ * for the palette and the topbar, and `app.css` already owns a `.dot` — the turn
+ * indicator, a 9px circle. A cell called `dot` inherited its border-radius and
+ * every legal square came out round.
+ */
+.mini [data-mark]::after {
+	content: '';
+	position: absolute;
+	border-radius: 2px;
+}
+
+.mini [data-mark='go']::after {
+	width: 30%; height: 30%;
+	background: var(--mark-free);
+	opacity: .85;
+}
+
+.mini [data-mark='take']::after {
+	inset: 8%;
+	border: 3px solid var(--mark-capture);
+	border-radius: 3px;
+}
+
+/* A board that is mostly refused needs the refusal to be a wash rather than an
+   alarm — the eye should land on the squares that are open. */
+.mini [data-mark='stop']::after {
+	inset: 0;
+	background: color-mix(in oklab, var(--mark-blocked) 13%, transparent);
+	border-radius: 0;
+}
+
+.mini [data-mark='stop']::before {
+	content: '';
+	position: absolute;
+	inset: 38%;
+	border-radius: 999px;
+	background: var(--mark-blocked);
+	opacity: .3;
+}
+
+/* the square a piece is moving from */
+.mini [data-mark='here']::after {
+	inset: 6%;
+	border: 2px dashed var(--ink-faint);
+	border-radius: 3px;
+	opacity: .7;
+}
+
+/* ------------------------------------------------------------------ reserve */
+
+.reserve {
+	display: flex;
+	align-items: flex-end;
+	gap: 10px;
+	padding: 12px 14px;
+	border: 1px solid var(--card-border);
+	border-radius: 6px;
+	background: var(--card);
+	width: max-content;
+}
+
+.reserve img { height: 42px; width: auto; display: block; }
+.reserve .empty { opacity: .16; filter: grayscale(1); }
+
+.reserve .cooling { position: relative; }
+
+.reserve .cooling img { opacity: .34; }
+
+.reserve .cooling b {
+	position: absolute;
+	top: -4px; right: -6px;
+	min-width: 17px; height: 17px;
+	display: grid; place-items: center;
+	border-radius: 999px;
+	background: var(--accent-soft);
+	color: var(--ink);
+	font-size: 10px;
+	font-weight: 500;
+}
+
+/* --------------------------------------------------------------------- cta */
+
+.cta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 20px;
+	padding: clamp(24px, 3.4vw, 40px);
+	border: 1px solid var(--card-border);
+	border-radius: 8px;
+	background: var(--card);
+}
+
+.cta h2 { margin: 0; font-size: clamp(20px, 2.6vw, 28px); font-weight: 500; letter-spacing: .06em; }
+.cta p { margin: 6px 0 0; font-size: 14px; color: var(--ink-soft); }
+
+.cta a {
+	display: inline-flex;
+	align-items: center;
+	gap: 14px;
+	padding: 15px 26px;
+	border-radius: 999px;
+	background: var(--ink);
+	color: var(--bg);
+	text-decoration: none;
+	font-size: 12px;
+	letter-spacing: .2em;
+	transition: transform .2s ease, opacity .2s ease;
+}
+
+.cta a:hover { transform: translateY(-2px); }
+.cta a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* -------------------------------------------------------------------- foot */
+
+.doc-foot {
+	border-top: 1px solid var(--rule);
+	padding-top: 20px;
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	gap: 12px;
+	font-size: 11.5px;
+	letter-spacing: .1em;
+	color: var(--ink-faint);
+}
+
+.doc-foot a { color: var(--ink-faint); }
+
+@media (max-width: 720px) {
+
+	.rule { grid-template-columns: 1fr; gap: 12px; }
+	.rule > .rule-no { padding-top: 0; }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+	.cta a:hover { transform: none; }
+
+}

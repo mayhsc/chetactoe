@@ -1,6 +1,10 @@
 node_modules/
 dist/
 
+# the dev server's self-signed certificate, remade whenever this machine's
+# addresses change — see tools/dev-cert.mjs
+.certs/
+
 # The source photographs the renders are matched against. Needed locally for
 # /compare.html and tools/analyse.mjs; see the README.
 reference/

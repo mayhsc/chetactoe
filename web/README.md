@@ -13,19 +13,60 @@ This is the web client for [`mayhsc/chetactoe`](https://github.com/mayhsc/chetac
 ```bash
 npm install
 npm run dev          # http://localhost:5178
+npm run dev:lan      # https://<your-mac>.local:5178 — reachable from a phone
 ```
 
 **WebGPU is required.** `WoodNodeMaterial` builds its pore structure from a
 `TSL.wgslFn`, so there is no WebGL fallback — the page shows an explanatory message
 instead. Chrome/Edge 113+ or Safari 26+.
 
+### Seeing it on another device — and why `npm run dev` alone will not
+
+**WebGPU is only handed to a secure context.** `https://` is one, and
+`http://localhost` gets a special exemption — but `http://192.168.1.x`, the address
+another device on your network has to use, is **not**. So `vite --host` gets you a
+page that loads and then refuses to draw, with `navigator.gpu` undefined, on a
+browser that supports WebGPU perfectly well. Nothing about the browser is wrong.
+
+`npm run dev:lan` serves the same files over HTTPS instead. `tools/dev-cert.mjs`
+makes a self-signed certificate covering `localhost`, this machine's Bonjour name
+and its current IPv4 addresses, into a gitignored `.certs/`. The browser warns once
+and lets you continue, which is all a secure context needs; to silence it on this
+Mac:
+
+```bash
+node tools/dev-cert.mjs --trust      # adds it to your login keychain
+```
+
+Use the **`.local` name**, not the IP: `https://Salils-MacBook-Air.local:5178`. The
+IP changes when your router hands out a new lease and the Bonjour name does not, so
+that is the URL worth bookmarking. The certificate is remade automatically whenever
+this machine's addresses change.
+
+**Do not reach for `chrome://flags` → "Insecure origins treated as secure".** It
+works until it doesn't, in three ways that all present as "it turned itself off
+again": Chrome drops flags once they pass their expiry milestone, resetting or
+syncing a profile clears them, and the entry names one exact origin, so a new DHCP
+lease silently stops matching it.
+
 ## The board
 
 ![The game shell](renders/play.png)
 
-Pieces on `/play.html` are **draggable** — pick any one up and drop it on any empty
-square. The camera's rotate / zoom / pan axes each have a toggle plus a master lock,
-in the cluster at the board's bottom-left.
+`/play.html` is a **playable game**, rules and all. The board starts empty with four
+pieces per side in the reserves beside it. **Drag** a piece straight out of the reserve
+onto a square, or out of one square onto another — or **tap** it and tap where it should
+go; the square under the pointer is marked as you move either way.
+
+**Three of your pieces in a line wins**, but you cannot get there by dropping the third
+one in: a placement may never be the move that completes a line, so it has to be walked
+in from somewhere. Placements have to touch a piece you already have out, a captured
+piece sits out a turn before it can be played again, and the second player may **take
+the first player's position** instead of answering it. The rules and the numbers behind
+them are in the [root README](../README.md#why-these-rules).
+
+The camera's rotate / zoom / pan axes each have a toggle plus a master lock, in the
+cluster at the board's bottom-left.
 
 ![The pieces](renders/pieces.png)
 
@@ -34,12 +75,13 @@ in the cluster at the board's bottom-left.
 | page | what |
 | --- | --- |
 | `/` | the landing page: a 4×4 grid whose central 2×2 is the live board |
-| `/play.html` | the game shell: board, coordinate labels, side panel, piece tray, light/dark |
+| `/rules.html` | the rules, with a little board per rule — linked from the landing page's 03 cell |
+| `/play.html` | the game: board, coordinate labels, reserves, move history, light/dark |
 | `/board.html` | the board framed exactly like the reference photograph, for verification |
 | `/pieces.html` | the four pieces in a row, framed like their reference |
 | `/compare.html` | fade / wipe / difference the board render against its reference |
 
-`/` and `/play.html` take `?theme=dark`; `/board.html` takes `?pieces=0`; `/pieces.html`
+`/`, `/rules.html` and `/play.html` take `?theme=dark`; `/board.html` takes `?pieces=0`; `/pieces.html`
 takes `?tone=dark`, `?piece=knight` and `?bg=none`. Every page accepts camera overrides
 — `?fov=` `?elev=` `?az=` `?dist=` `?y=` — and `?w=`/`?h=` to pin the canvas size for
 capture. Drag to orbit on every page but `/`, where the camera answers the pointer
@@ -66,9 +108,11 @@ in this repo** — `reference/` is gitignored. `/compare.html`, `tools/analyse.m
 | `src/studio.js` | the lighting rig, PMREM'd into an environment map |
 | `src/stage.js` | renderer, camera, cyclorama and GTAO — shared by both pages |
 | `src/scene.js` | board + pieces assembly and the square/cell mapping |
-| `src/interaction.js` | pointer drag: pick, carry, cell marker, snap |
+| `src/engine.js` | the Go engine as WebAssembly — actions out, snapshots in |
+| `src/interaction.js` | pointer: pick, carry, tap-to-select, destination markers, snap |
 | `src/viewcontrols.js` | rotate / zoom / pan toggles and the view lock |
 | `src/home.js` + `src/home.css` | the landing page |
+| `src/rules.css` + `src/rules.js` | the rules page — borrows app.css for palette and topbar |
 | `src/app.js` + `src/app.css` | the game shell |
 | `src/main.js` | the reference-framed board page |
 | `src/pieces-view.js` | the pieces page |
@@ -110,6 +154,25 @@ The four numbered sections and the menu open one dialog whose content is swapped
 five panels. The piece in the craft cell is the real model, rendered by
 `tools/make-icons.sh` at four times icon size.
 
+### The rules page
+
+`rules.html` is a document, not an instrument, so it carries no 3D at all — the piece
+icons are the same pre-rendered PNGs the panel uses, and each rule gets a small 4×4
+board drawn as a CSS grid, checkered like the real one and marked in the game's own
+colours: green where a piece may go, amber for a capture, a soft wash for a square the
+rules refuse.
+
+It loads `app.css` for the palette, the type and the topbar rather than restating them,
+which is the whole reason it looks like the rest of the site — and it is also the one
+trap in the file. `app.css` already owns a `.dot`: the 9px turn indicator, `border-radius:
+50%`. A board cell with `class="dot"` inherited that and every legal square rendered as a
+circle with its corners cut off. The markers are `data-mark` attributes now, so a class
+name the shell adds later cannot reach into the diagrams.
+
+The diagrams were checked against the real move generator rather than drawn by eye —
+the engine's own move generator for a piece on B2, converted to grid cells — because
+two of the four were wrong the first time.
+
 ### The shell
 
 `play.html` is a static grid — topbar, stage, panel — around a canvas that the 3D
@@ -139,16 +202,87 @@ they come out of it. The same script renders the landing page's craft photograph
 `craft-knight.png`, the same camera at four times the area, because that one is shown
 the height of a whole grid cell rather than 46px tall.
 
-### Moving pieces
+### Playing
 
-Free movement, deliberately: nothing checks whose turn it is or whether a knight moves
-in an L. The one rule is that **dropping on an occupied square is refused** and the
-piece settles back where it came from — with no reserve for a captured piece to go to,
-a capture would mean silently deleting a piece from the set, which is worse than
-declining the move. Off-board drops are refused the same way.
+The client holds no rules at all. `internal/engine` — the same Go package the terminal
+client uses — is compiled to WebAssembly and loaded by `src/engine.js`, which sends
+actions and receives snapshots. The rules used to live twice, here and in Go, kept in step
+by hand; a rule fixed in one was a rule still wrong in the other. Now there is one
+implementation and the browser is a client of it.
+
+`src/engine.js` is also the only place that speaks both vocabularies: the engine counts
+players and piece types as integers and addresses squares as row/col pairs, and everything
+above it says `light`, `rook` and `B3`. Decoding once, at the boundary, is what keeps the
+integers out of the drawing code.
+
+```js
+const engine = await startGame( { mode: 'local', onSnapshot } );
+engine.select( 'light:rook' );   // where may this go?
+engine.execute( 'light:rook', 'B2' );
+engine.swap();                   // the pie rule
+```
+
+Two consequences worth knowing. **Every action is asynchronous** — it is a message to a
+goroutine, and the answer arrives as a snapshot — so the client never predicts the
+result of a move, it draws the reply. And **a JavaScript error inside the snapshot
+callback used to kill the engine**: `js.Value.Invoke` turns a JS exception into a Go
+panic, which ends the WebAssembly program, and every later action then fails with
+"Go program has already exited" — pointing nowhere near the actual typo. `cmd/wasm`
+recovers from that now and logs it instead.
+
+Five things about the shell are worth knowing.
+
+- **Nothing starts on the board.** All eight pieces are built once at startup and all
+  eight begin hidden, because all eight begin in the reserves. A mesh with no square is
+  a piece in hand, not a missing piece, and the panel draws it.
+- **The reserve is four fixed sockets per side**, in the engine's own slot order —
+  pawn, knight, bishop, rook. A piece in play leaves its socket behind rather than
+  closing the row up, so the reserve reads as "four pieces, two of them out there", and
+  a captured piece comes back to a place the eye already knows. That is also the answer
+  to where a piece goes when it leaves the board: **back to its owner's reserve**, never
+  out of the game.
+- **One function draws the position.** `sync()` reads the rules and sets every piece's
+  square, visibility and lift from them, so the panel and the board cannot disagree —
+  and the piece being carried is the one thing it leaves alone.
+- **Every move goes through `act()`**, whether it came from a drag, a tap or a test
+  hook, and `act()` asks the rules. An illegal move is refused in one place, and the
+  board can never show something the rules did not allow.
+- **The swap changes the timber under the pieces, and nothing else.** A mesh is chosen
+  by `tone-type`, so when the pie rule hands every piece to the other player, `sync()`
+  simply moves the light-wood rook to where the dark-wood rook was standing. The
+  position is identical and the colours have traded, which is exactly what happened.
+
+**One gesture with two endings, everywhere.** Press a piece and move, and you are
+dragging it; press and let go, and you have selected it. That holds for a piece in play
+and for one in the reserve: pressing a reserve slot lights up every square it can go to,
+and if you keep moving, *the piece itself* lifts out of the panel and follows the pointer
+onto the board. Drop it on a marked square to place it; drop it anywhere else — off the
+board, on an occupied square — and it goes back to the reserve, because that is where the
+rules still have it. Nothing needs a modifier, and the same code path serves mouse and
+touch.
+
+Three things make the click half aimable rather than a guess:
+
+- **The square under the pointer is marked while you hover**, as soon as something is
+  selected and before any click — green where the piece may go, amber for a capture, red
+  where the move would be refused. The board is drawn in perspective, so without this
+  a click is aimed at a parallelogram you have to estimate; it also means a refusal is
+  visible *before* you commit rather than after.
+- **The cursor says what the press will do** — `grab` over a piece you may move and over
+  every reserve slot, `pointer` over a square you may move to.
+- **Escape clears a selection.** Clicking somewhere harmless to get rid of one is not
+  obvious when every square looks like it might do something.
+
+Destinations are marked as small dots, except where a piece is standing: a capture, and
+the line that won the game, are drawn as a ring wider than a piece's base. A dot under a
+base is a hint nobody can see, and the capture is the hint you most want.
+
+The carry out of the reserve is tracked on `window`, not on the button it started from:
+the panel is redrawn whenever the game state changes, so by the time the pointer moves,
+the element the press landed on has usually been replaced.
 
 `squareAt()` in `src/scene.js` is the inverse of `cellCentre()` and returns `null`
-outside the playing field, which is what makes both refusals fall out of one check.
+outside the playing field, which is what makes an off-board drop refuse itself.
 
 While a piece is being carried, the camera is frozen and then **restored to whatever it
 was**, not to all-on — the view toggles may have had an axis switched off, and a drag
@@ -369,10 +503,19 @@ On the shell:
 - **The board carries slightly more rotation than the comp**, which is very nearly
   square-on. Camera framing is otherwise matched: the board lands within a few pixels
   of the comp's, at 758×702 against 756×694.
-- **No game rules.** Pieces move freely; nothing validates a move beyond refusing an
-  occupied or off-board square, and the turn indicator just flips to whoever did not
-  just move. The opening position is sample data in `STATE` at the top of `src/app.js`,
-  and Restart puts every piece back on it.
+- **The compiled engine is committed.** `public/chetactoe.wasm` is a 3.8 MB build
+  artifact in the repo, because the deploy has no Go toolchain. It can therefore go
+  stale: run `npm run build:wasm` after touching `internal/engine`, or the browser plays
+  yesterday's rules while the tests pass on today's.
+- **Every action is a round trip.** The client cannot answer "where may this go" itself
+  any more — it asks and draws the reply. What it still answers locally is "is this mine
+  to lift", because the pointer needs that before it has sent anything.
+- **The reserves are drawn as icons in the panel, not as pieces on the table.** Real
+  meshes parked outside the board would need the camera re-framed, and the framing is
+  matched to a photograph.
+- **Both sides are playable from one screen.** It is a hot-seat board: the panel says
+  whose turn it is and only that side's reserve is live, but nothing stops one person
+  from playing both.
 - The hamburger opens nothing yet.
 
 ## Tools
@@ -382,7 +525,7 @@ reader/writer built on `node:zlib`).
 
 ```bash
 node tools/check-squares.mjs                     # square <-> position round-trip
-node tools/check-interaction.mjs                 # drag + view lock, in a real browser
+node tools/check-interaction.mjs                 # the game + view lock, in a real browser
 node tools/check-home.mjs                        # landing page: grid, clipping, sheet, theme
 node tools/fit-camera.mjs                        # board camera + margin from the reference
 node tools/fit-pieces.mjs [elevation]            # pieces camera + row spacing
@@ -397,7 +540,15 @@ node tools/crop.mjs out.png 430 330 260 190 3 reference/target.png a.png
 tools/shot.sh latest.png                         # headless board capture, 1353x1162
 tools/shot-pieces.sh pieces.png                  # headless pieces capture, 750x230
 tools/shot-home.sh home.png ["?theme=dark"]      # landing page, 1536x1024
-node tools/shot-page.mjs out.png 430x932 [path]  # full page at a real device viewport
+node tools/shot-page.mjs out.png 430x932 [path] [setup]   # full page at a device viewport
+```
+
+`shot-page.mjs` takes a `setup` expression run in the page before the shot, which is how
+a position gets captured now that the board starts empty:
+
+```bash
+node tools/shot-page.mjs renders/play.png 1280x900 /play.html \
+  '__move("dark:knight","B3"); __move("light:rook","C2"); __select("B3")'
 ```
 
 Use `shot-page.mjs` rather than `shot-home.sh` for the narrow layouts: `shot-home.sh`

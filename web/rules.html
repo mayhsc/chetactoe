@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Chetactoe — the rules</title>
+		<meta name="description" content="Four pieces each, none of them on the board. Three in a line wins — but you cannot simply drop the third one in." />
+		<script>
+			// Blocking on purpose, and before the stylesheet — same reason as the other
+			// two pages: the CSS default palette is the light one, so setting the theme
+			// from a module still starts from light and animates across.
+			( function () {
+				var q = new URLSearchParams( location.search ).get( 'theme' );
+				var t = q === 'light' || q === 'dark' ? q : null;
+				if ( ! t ) { try { t = localStorage.getItem( 'chetactoe-theme' ); } catch ( e ) { /* private mode */ } }
+				document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
+			} )();
+		</script>
+		<link rel="stylesheet" href="/src/app.css" />
+		<link rel="stylesheet" href="/src/rules.css" />
+	</head>
+	<body>
+		<div class="doc">
+			<header class="doc-top">
+				<a class="brand" href="/" aria-label="Chetactoe — home">
+					<span class="brand-name">CHETACTOE</span>
+					<span class="brand-sub">四目</span>
+				</a>
+				<div class="tools">
+					<button id="theme" class="icon-btn" type="button" aria-label="Toggle theme" title="Toggle theme">
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<g class="sun">
+								<circle cx="12" cy="12" r="4.2" />
+								<path d="M12 1.6v3M12 19.4v3M1.6 12h3M19.4 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M19.4 4.6l-2.1 2.1M6.7 17.3l-2.1 2.1" />
+							</g>
+							<path class="moon" d="M20.5 14.6A9 9 0 1 1 9.4 3.5a7.2 7.2 0 0 0 11.1 11.1Z" />
+						</svg>
+					</button>
+				</div>
+			</header>
+
+			<section class="hero">
+				<h1>THE RULES</h1>
+				<p class="lede">
+					Four pieces each and an empty board. Three in a line wins — but you cannot
+					simply drop the third piece into the gap. You have to walk it in, and your
+					opponent gets to watch you do it.
+				</p>
+
+				<dl class="facts">
+					<div>
+						<dt>BOARD</dt>
+						<dd>4 × 4<small>sixteen squares, no back rank</small></dd>
+					</div>
+					<div>
+						<dt>PIECES</dt>
+						<dd>4 each<small>pawn, knight, bishop, rook</small></dd>
+					</div>
+					<div>
+						<dt>TO WIN</dt>
+						<dd>3 in a line<small>row, column or diagonal</small></dd>
+					</div>
+					<div>
+						<dt>A GAME</dt>
+						<dd>10 min<small>two players, one board</small></dd>
+					</div>
+				</dl>
+
+				<nav class="contents" aria-label="Contents">
+					<a href="#setup"><em>01</em>SETUP</a>
+					<a href="#turn"><em>02</em>YOUR TURN</a>
+					<a href="#moves"><em>03</em>HOW PIECES MOVE</a>
+					<a href="#develop"><em>04</em>DEVELOPING</a>
+					<a href="#placing"><em>05</em>PLACING</a>
+					<a href="#taking"><em>06</em>TAKING</a>
+					<a href="#winning"><em>07</em>WINNING</a>
+					<a href="#swap"><em>08</em>THE SWAP</a>
+					<a href="#draws"><em>09</em>DRAWS</a>
+				</nav>
+			</section>
+
+			<!-- 01 ------------------------------------------------------------- -->
+			<section class="rule" id="setup">
+				<div class="rule-no">01</div>
+				<div class="rule-body">
+					<h2>NOTHING STARTS ON THE BOARD</h2>
+					<p>
+						The board begins empty. Each player holds <strong>four pieces</strong> —
+						a pawn, a knight, a bishop and a rook — in a reserve beside the board.
+						Getting a piece into play costs you a turn, so your opening moves are
+						decisions about <em>which</em> piece you commit and <em>where</em>.
+					</p>
+					<p>
+						Nothing is ever removed from the game. A piece is always either on the
+						board or in a reserve, which is why the reserve is worth watching: it
+						tells you exactly what your opponent still has to play with.
+					</p>
+
+					<div class="figures">
+						<figure>
+							<div class="mini" role="img" aria-label="An empty four by four board">
+								<span></span><span></span><span></span><span></span>
+								<span></span><span></span><span></span><span></span>
+								<span></span><span></span><span></span><span></span>
+								<span></span><span></span><span></span><span></span>
+							</div>
+							<figcaption>The opening position. <b>Sixteen empty squares.</b></figcaption>
+						</figure>
+						<figure>
+							<div class="reserve">
+								<img src="/icons/dark-pawn.png" alt="dark pawn" />
+								<img src="/icons/dark-knight.png" alt="dark knight" />
+								<img src="/icons/dark-bishop.png" alt="dark bishop" />
+								<img src="/icons/dark-rook.png" alt="dark rook" />
+							</div>
+							<figcaption>Your reserve — four pieces, four fixed places.</figcaption>
+						</figure>
+					</div>
+				</div>
+			</section>
+
+			<!-- 02 ------------------------------------------------------------- -->
+			<section class="rule" id="turn">
+				<div class="rule-no">02</div>
+				<div class="rule-body">
+					<h2>ONE THING PER TURN</h2>
+					<p>
+						On your turn you do exactly one of two things:
+					</p>
+					<p>
+						<strong>Place</strong> a piece from your reserve onto the board, or
+						<strong>move</strong> a piece you already have in play. You never do
+						both, and you may not pass.
+					</p>
+					<p class="aside">
+						Placing is the only way to get a piece out, and moving is the only way to
+						finish a line. That tension is most of the game: every piece you place is
+						a piece your opponent can see coming, and every piece you hold back is one
+						they have to keep accounting for.
+					</p>
+				</div>
+			</section>
+
+			<!-- 03 ------------------------------------------------------------- -->
+			<section class="rule" id="moves">
+				<div class="rule-no">03</div>
+				<div class="rule-body">
+					<h2>HOW EACH PIECE MOVES</h2>
+					<p>
+						As in chess, with one wrinkle: <strong>a pawn faces away from you</strong>
+						when you place it, moves one square forward, and takes one square
+						<em>diagonally</em> forward — and when it reaches the far edge it
+						<strong>turns around</strong> and walks back. A pawn is never dead wood.
+						Each board below shows where that piece could go from the middle of an
+						empty board.
+					</p>
+
+					<div class="figures">
+						<figure>
+							<div class="mini" role="img" aria-label="A pawn steps one square forward and takes diagonally forward">
+								<span></span><span></span><span></span><span></span>
+								<span></span><span data-mark="here"><img src="/icons/dark-pawn.png" alt="" /></span><span></span><span></span>
+								<span data-mark="take"><img src="/icons/light-rook.png" alt="" /></span><span data-mark="go"></span><span data-mark="take"><img src="/icons/light-knight.png" alt="" /></span><span></span>
+								<span></span><span></span><span></span><span></span>
+							</div>
+							<figcaption><b>Pawn</b> — one square forward, and takes only diagonally forward. Blocked straight ahead, it cannot move at all. At the far edge it turns and comes back.</figcaption>
+						</figure>
+
+						<figure>
+							<div class="mini" role="img" aria-label="A knight jumps in an L">
+								<span></span><span></span><span></span><span data-mark="go"></span>
+								<span></span><span data-mark="here"><img src="/icons/dark-knight.png" alt="" /></span><span></span><span></span>
+								<span></span><span></span><span></span><span data-mark="go"></span>
+								<span data-mark="go"></span><span></span><span data-mark="go"></span><span></span>
+							</div>
+							<figcaption><b>Knight</b> — the L, and the only piece that jumps over anything in the way.</figcaption>
+						</figure>
+
+						<figure>
+							<div class="mini" role="img" aria-label="A bishop slides diagonally">
+								<span data-mark="go"></span><span></span><span data-mark="go"></span><span></span>
+								<span></span><span data-mark="here"><img src="/icons/dark-bishop.png" alt="" /></span><span></span><span></span>
+								<span data-mark="go"></span><span></span><span data-mark="go"></span><span></span>
+								<span></span><span></span><span></span><span data-mark="go"></span>
+							</div>
+							<figcaption><b>Bishop</b> — diagonals, any distance. It never leaves its own colour, so choose that colour when you place it.</figcaption>
+						</figure>
+
+						<figure>
+							<div class="mini" role="img" aria-label="A rook slides along the row and column">
+								<span></span><span data-mark="go"></span><span></span><span></span>
+								<span data-mark="go"></span><span data-mark="here"><img src="/icons/dark-rook.png" alt="" /></span><span data-mark="go"></span><span data-mark="go"></span>
+								<span></span><span data-mark="go"></span><span></span><span></span>
+								<span></span><span data-mark="go"></span><span></span><span></span>
+							</div>
+							<figcaption><b>Rook</b> — rows and columns, any distance. The strongest piece on a board this small.</figcaption>
+						</figure>
+					</div>
+
+					<p class="aside">
+						A sliding piece stops at the first piece in its way. It can take an enemy
+						standing there; it cannot pass through anything, and it cannot land on one
+						of its own.
+					</p>
+				</div>
+			</section>
+
+			<!-- 04 ------------------------------------------------------------- -->
+			<section class="rule" id="develop">
+				<div class="rule-no">04</div>
+				<div class="rule-body">
+					<h2>GET TWO OUT BEFORE YOU MOVE ANYTHING</h2>
+					<p>
+						Until you have <strong>two pieces on the board</strong>, placing is all you
+						may do. It stops the game opening with one piece shuffling about, and it is
+						the rule that decides who the board favours: with no requirement at all the
+						<em>second</em> player wins more often, and with three the first player runs
+						away with it. Two is the setting that sits level.
+					</p>
+					<p class="aside">
+						That number came out of playing the game a few thousand times rather than
+						out of taste — see the root README.
+					</p>
+				</div>
+			</section>
+
+			<!-- 05 ------------------------------------------------------------- -->
+			<section class="rule" id="placing">
+				<div class="rule-no">05</div>
+				<div class="rule-body">
+					<h2>WHERE YOU MAY PLACE</h2>
+					<p>
+						Your <strong>first</strong> piece goes anywhere. After that, a piece from
+						your reserve must land on a square <strong>touching one you already
+						hold</strong> — including diagonally. The reserve builds a position; it
+						does not parachute into one.
+					</p>
+
+					<div class="figures">
+						<figure>
+							<div class="mini" role="img" aria-label="Only the squares touching your rook are open to a placement">
+								<span><img src="/icons/dark-rook.png" alt="" /></span><span data-mark="go"></span><span data-mark="stop"></span><span data-mark="stop"></span>
+								<span data-mark="go"></span><span data-mark="go"></span><span data-mark="stop"></span><span data-mark="stop"></span>
+								<span data-mark="stop"></span><span data-mark="stop"></span><span data-mark="stop"></span><span data-mark="stop"></span>
+								<span data-mark="stop"></span><span data-mark="stop"></span><span data-mark="stop"></span><span data-mark="stop"></span>
+							</div>
+							<figcaption>With a rook on A1, only the three squares around it will take a placement.</figcaption>
+						</figure>
+					</div>
+				</div>
+			</section>
+
+			<!-- 05 ------------------------------------------------------------- -->
+			<section class="rule" id="taking">
+				<div class="rule-no">06</div>
+				<div class="rule-body">
+					<h2>TAKING A PIECE</h2>
+					<p>
+						Move onto an enemy piece and you capture it. It is not removed from the
+						game — it goes <strong>back to its owner's reserve</strong>, and they can
+						place it again later.
+					</p>
+					<p>
+						There is a cost, though: a captured piece <strong>sits out one turn</strong>
+						before it can be placed. So taking something does not win you material, it
+						wins you a tempo — and on a board where a line is three squares long, a
+						tempo is often the whole game.
+					</p>
+
+					<div class="figures">
+						<figure>
+							<div class="mini" role="img" aria-label="A dark rook takes the light pawn on the next square">
+								<span><img src="/icons/dark-rook.png" alt="" /></span><span></span><span></span><span></span>
+								<span data-mark="take"><img src="/icons/light-pawn.png" alt="" /></span><span></span><span></span><span></span>
+								<span></span><span></span><span></span><span></span>
+								<span></span><span></span><span></span><span></span>
+							</div>
+							<figcaption>The amber ring is a capture — the same marker the board shows you mid-move.</figcaption>
+						</figure>
+						<figure>
+							<div class="reserve">
+								<span class="cooling"><img src="/icons/light-pawn.png" alt="light pawn, cooling" /><b>1</b></span>
+								<img src="/icons/light-knight.png" alt="light knight" />
+								<img src="/icons/light-bishop.png" alt="light bishop" />
+								<img src="/icons/light-rook.png" alt="light rook" />
+							</div>
+							<figcaption>Back in their reserve, with a turn to wait before it can be played.</figcaption>
+						</figure>
+					</div>
+				</div>
+			</section>
+
+			<!-- 06 ------------------------------------------------------------- -->
+			<section class="rule" id="winning">
+				<div class="rule-no">07</div>
+				<div class="rule-body">
+					<h2>THREE IN A LINE — WALKED IN, NOT DROPPED IN</h2>
+					<p>
+						<strong>Three of your pieces in a row, a column or a diagonal wins.</strong>
+						Which three does not matter; a pawn counts the same as a rook.
+					</p>
+					<p>
+						But a placement may <strong>never</strong> be the move that completes a
+						line. With two pieces lined up and a gap between them, you cannot simply
+						drop the third one in — you have to move a piece that is already on the
+						board into the gap. That takes an extra turn, and it gives your opponent a
+						turn to see it and stop it.
+					</p>
+
+					<div class="figures">
+						<figure>
+							<div class="mini" role="img" aria-label="Dropping a piece into the gap is refused">
+								<span></span><span></span><span></span><span></span>
+								<span><img src="/icons/dark-pawn.png" alt="" /></span><span><img src="/icons/dark-knight.png" alt="" /></span><span data-mark="stop"></span><span></span>
+								<span></span><span></span><span></span><span></span>
+								<span></span><span></span><span></span><span></span>
+							</div>
+							<figcaption><b>Refused.</b> The bishop cannot be dropped into C2 to finish the line.</figcaption>
+						</figure>
+
+						<figure>
+							<div class="mini" role="img" aria-label="A bishop already on the board walks into the gap and wins">
+								<span></span><span><img src="/icons/dark-bishop.png" alt="" /></span><span></span><span></span>
+								<span><img src="/icons/dark-pawn.png" alt="" /></span><span><img src="/icons/dark-knight.png" alt="" /></span><span data-mark="go"></span><span></span>
+								<span></span><span></span><span></span><span></span>
+								<span></span><span></span><span></span><span></span>
+							</div>
+							<figcaption><b>Allowed.</b> A bishop already in play steps diagonally into C2, and that is the game.</figcaption>
+						</figure>
+					</div>
+
+					<p class="aside">
+						This one rule is why the game works. Without it, making a line is a race,
+						and whoever moves first wins it — measurably: in self-play the first
+						player took more than nine games in ten.
+					</p>
+				</div>
+			</section>
+
+			<!-- 07 ------------------------------------------------------------- -->
+			<section class="rule" id="swap">
+				<div class="rule-no">08</div>
+				<div class="rule-body">
+					<h2>THE SECOND PLAYER MAY TAKE THE FIRST MOVE</h2>
+					<p>
+						Moving first is an advantage. Rather than guess at how to compensate for
+						it, the game hands the decision to the player who is behind: after the
+						first move, and only then, the second player may
+						<strong>take that position as their own</strong> instead of replying to it.
+						The pieces change hands; the game carries on.
+					</p>
+					<p>
+						It settles itself. If the opening move is a strong one, it gets taken — so
+						the first player learns to open with something even, and neither seat is
+						worth more than the other.
+					</p>
+					<p class="aside">
+						On the board this is the <b>TAKE THIS POSITION</b> button, and it appears
+						for exactly one turn.
+					</p>
+				</div>
+			</section>
+
+			<!-- 08 ------------------------------------------------------------- -->
+			<section class="rule" id="draws">
+				<div class="rule-no">09</div>
+				<div class="rule-body">
+					<h2>WHEN NOBODY IS WINNING</h2>
+					<p>
+						Three rules stop a game going nowhere for ever:
+					</p>
+					<p>
+						The same position three times is a <strong>draw</strong>. Hitting the move
+						limit is a <strong>draw</strong>. And a player who has no legal move at all
+						— everything in play boxed in, nothing placeable — <strong>loses</strong>.
+					</p>
+					<p class="aside">
+						You will rarely see any of them. They exist because an earlier version of
+						this game had none, and more than half of all games between decent players
+						simply never ended.
+					</p>
+				</div>
+			</section>
+
+			<div class="cta">
+				<div>
+					<h2>THAT IS THE WHOLE GAME</h2>
+					<p>Nine rules, four pieces, sixteen squares. The rest is yours.</p>
+				</div>
+				<a href="/play.html">
+					PLAY NOW
+					<svg viewBox="0 0 30 12" width="30" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4">
+						<path d="M0 6h28M23 1l5 5-5 5" />
+					</svg>
+				</a>
+			</div>
+
+			<footer class="doc-foot">
+				<span>CHETACTOE — 四目</span>
+				<span><a href="/">Home</a> · <a href="/play.html">Play</a></span>
+			</footer>
+		</div>
+
+		<script type="module" src="/src/rules.js"></script>
+	</body>
+</html>

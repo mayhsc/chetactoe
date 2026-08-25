@@ -130,8 +130,9 @@ func (p *Piece) Type() PieceType { return p.PieceType }
 func (p *Piece) Pos() Position   { return p.Position }
 
 func (p Piece) ValidMoves(bd Board) []Position {
-	player := int(p.Player)
-	if bd.pieceCount[player] < 3 {
+	// Keep placing until you have enough on the board. It opens the game with
+	// development instead of manoeuvring, and it is a rule now rather than a 3.
+	if bd.pieceCount[int(p.Player)] < bd.rules.MinPiecesToMove {
 		return nil
 	}
 
