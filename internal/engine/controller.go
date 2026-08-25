@@ -1,8 +1,10 @@
 package engine
 
-import (
-	"net"
-)
+
+type MoveTransport interface {
+	SendMove(m Move) error
+	ReceiveMoves(out chan<- Move)
+}
 
 func StartLocalGame(act <-chan Action, snapshot chan<- GameSnapshot) {
 	game := NewGame()
@@ -51,14 +53,12 @@ func StartBotGame(act <-chan Action, snapshot chan<- GameSnapshot, playerSide Pl
 	}
 }
 
-func StartNetworkGame(act <-chan Action, snapshot chan<- GameSnapshot, conn net.Conn, localPlayer Player) {
-	peer := NewPeer(conn)
-
+func StartNetworkGame(act <-chan Action, snapshot chan<- GameSnapshot,  peer MoveTransport) {
 	game := NewGame()
 	snapshot <- game.Snapshot()
 
 	receiveChannel := make(chan Move)
-	go peer.receiveMoves(receiveChannel)
+	go peer.ReceiveMoves(receiveChannel)
 
 	for {
 		select {
@@ -70,7 +70,7 @@ func StartNetworkGame(act <-chan Action, snapshot chan<- GameSnapshot, conn net.
 			snapshot <- s
 
 			if action.ActionType == Execute {
-				if err := peer.sendMove(action.Move); err != nil {
+				if err := peer.SendMove(action.Move); err != nil {
 					return
 				}
 			}
@@ -79,7 +79,7 @@ func StartNetworkGame(act <-chan Action, snapshot chan<- GameSnapshot, conn net.
 			if !ok {
 				return
 			}
-			s := game.apply(Action{ActionType: Execute, Move: move})
+			s := game.applyTrustedMove(move)
 			snapshot <- s
 		}
 	}
