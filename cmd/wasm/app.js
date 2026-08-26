@@ -170,6 +170,8 @@ function render() {
 
 function onSnapshot(jsonStr) {
   snapshot = JSON.parse(jsonStr);
+  console.log("Received snapshot: ", jsonStr);
+  console.log("Snapshot: ", snapshot);
   render();
 }
 
@@ -345,7 +347,9 @@ function setupDataChannel(channel) {
   };
 
   channel.onmessage = (event) => {
-    onSnapshot(event.data);
+    if (controller && controller.onRemoteMove) {
+      controller.onRemoteMove(event.data);
+    }
   };
 
   channel.onclose = () => {

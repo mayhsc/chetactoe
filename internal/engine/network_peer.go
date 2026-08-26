@@ -3,7 +3,7 @@ package engine
 import (
 	"encoding/gob"
 	"net"
-)
+ )
 
 type NetworkPeer struct {
 	conn net.Conn

@@ -55,10 +55,10 @@ func StartNetworkGame(this js.Value, args []js.Value) interface{} {
 	onSnapshot := args[1]
 
 	actChan := make(chan engine.Action, 100)
-	remoteChan := make(chan engine.Move, 100)
 	snapChan := make(chan engine.GameSnapshot, 100)
 
-	go engine.StartNetworkGame(actChan, snapChan, engine.NewJSPeer(peerSend))
+	peer := engine.NewJSPeer(peerSend)
+	go engine.StartNetworkGame(actChan, snapChan, peer)
 
 	go func() {
 		for snap := range snapChan {
@@ -76,10 +76,6 @@ func StartNetworkGame(this js.Value, args []js.Value) interface{} {
 
 			go func() {
 				actChan <- act
-				if act.ActionType == engine.Execute {
-					moveJson, _ := json.Marshal(act.Move)
-					peerSend.Invoke(string(moveJson))
-				}
 			}()
 
 			return nil
@@ -91,9 +87,11 @@ func StartNetworkGame(this js.Value, args []js.Value) interface{} {
 			if err := json.Unmarshal([]byte(jsJson), &move); err != nil {
 				return err.Error()
 			}
+
 			go func() {
-				remoteChan <- move
+				peer.PushRemoteMove(move)
 			}()
+
 			return nil
 		}),
 	})
