@@ -11,6 +11,7 @@ type NetworkPeer struct {
 	dec  *gob.Decoder
 }
 
+
 func NewPeer(conn net.Conn) *NetworkPeer {
 	return &NetworkPeer{
 		conn: conn,
