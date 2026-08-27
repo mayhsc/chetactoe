@@ -1,6 +1,8 @@
 package engine
 
-import "slices"
+import (
+	"slices"
+)
 
 type Game struct {
 	gb         *GameBaord

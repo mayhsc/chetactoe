@@ -170,6 +170,8 @@ function render() {
 
 function onSnapshot(jsonStr) {
   snapshot = JSON.parse(jsonStr);
+  console.log("Received snapshot: ", jsonStr);
+  console.log("Snapshot: ", snapshot);
   render();
 }
 
@@ -308,7 +310,6 @@ async function handleOffer(message) {
   }));
 }
 
-// ---------- peer connection lifecycle ----------
 
 pc.onicecandidate = (event) => {
   if (event.candidate && currentRoomCode) {
@@ -346,7 +347,9 @@ function setupDataChannel(channel) {
   };
 
   channel.onmessage = (event) => {
-    onSnapshot(event.data);
+    if (controller && controller.onRemoteMove) {
+      controller.onRemoteMove(event.data);
+    }
   };
 
   channel.onclose = () => {
@@ -356,10 +359,18 @@ function setupDataChannel(channel) {
   };
 }
 
-function startGameOnce() {
+async function startGameOnce() {
+  await ensureWasmLoaded();
   if (gameStarted) return;
+
   gameStarted = true;
-  beginGame("network");
+  snapshot = null;
+
+  controller = StartNetworkGame(
+    { send: (jsonStr) => dataChannel.send(jsonStr) },
+    onSnapshot
+  );
+  showScreen("screen-game");
 }
 
 async function startWebRTCConnection() {

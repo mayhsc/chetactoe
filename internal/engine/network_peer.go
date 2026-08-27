@@ -3,13 +3,14 @@ package engine
 import (
 	"encoding/gob"
 	"net"
-)
+ )
 
 type NetworkPeer struct {
 	conn net.Conn
 	enc  *gob.Encoder
 	dec  *gob.Decoder
 }
+
 
 func NewPeer(conn net.Conn) *NetworkPeer {
 	return &NetworkPeer{
