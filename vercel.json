@@ -1,0 +1,5 @@
+{
+  "buildCommand": "GOOS=js GOARCH=wasm go build -o cmd/wasm/bin/chetactoe.wasm ./cmd/wasm",
+  "outputDirectory": "cmd/wasm",
+  "framework": null
+}
