@@ -231,10 +231,7 @@ const rtcConfig = {
 };
 
 const pc = new RTCPeerConnection(rtcConfig);
-const isLocal = location.hostname === "localhost" || location.hostname === "127.0.0.1";
-const signalingUrl = isLocal
-  ? "ws://localhost:8000"
-  : "wss://signaling-7544.onrender.com/";
+const signalingUrl = "wss://signaling-7544.onrender.com/";
 
 const socket = new WebSocket(signalingUrl);
 let currentRoomCode = null;
