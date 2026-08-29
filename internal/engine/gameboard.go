@@ -29,7 +29,12 @@ func (gb *GameBaord) movePiece(oldPos Position, newPos Position, p Player) {
 
 	if !toHand {
 		if captured := gb.board.pieces[r2][c2]; captured != nil {
-			gb.board.pieceCount[int(captured.Player)]--
+			capturedIdx := int(captured.Player)
+			gb.board.pieceCount[capturedIdx]--
+
+			slot := int(captured.PieceType)
+			captured.Position = Position{Row: slot, Col: -1}
+			gb.hand[capturedIdx].Pieces[slot] = captured
 		}
 	}
 
@@ -52,7 +57,6 @@ func (gb *GameBaord) movePiece(oldPos Position, newPos Position, p Player) {
 		}
 	}
 }
-
 func edgeDirection(row int) (Direction, bool) {
 	switch row {
 	case 0:
