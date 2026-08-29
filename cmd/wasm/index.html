@@ -82,28 +82,5 @@
     </div>
     <script src="wasm_exec.js"></script>
     <script src="app.js"></script>
-    <script>
-      ;(function () {
-        const watched = ["app.js", "style.css", "bin/chetactoe.wasm"]
-        let lastModifiedMap = {}
-
-        setInterval(async () => {
-          for (const file of watched) {
-            try {
-              const response = await fetch(file, {
-                method: "HEAD",
-                cache: "no-cache",
-              })
-              const current = response.headers.get("Last-Modified")
-              if (lastModifiedMap[file] && lastModifiedMap[file] !== current) {
-                window.location.reload()
-                return
-              }
-              lastModifiedMap[file] = current
-            } catch (e) {}
-          }
-        }, 1000)
-      })()
-    </script>
   </body>
 </html>
