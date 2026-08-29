@@ -85,11 +85,6 @@ func StartNetworkGame(act <-chan Action, snapshot chan<- GameSnapshot, peer Move
 				return
 			}
 
-			if game.p != localPlayer {
-				snapshot <- game.Snapshot()
-				continue
-			}
-
 			s := game.applyTrustedMove(move)
 			snapshot <- s
 		}
