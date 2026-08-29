@@ -1,6 +1,5 @@
 package engine
 
-
 type MoveTransport interface {
 	SendMove(m Move) error
 	ReceiveMoves(out chan<- Move)
@@ -53,7 +52,7 @@ func StartBotGame(act <-chan Action, snapshot chan<- GameSnapshot, playerSide Pl
 	}
 }
 
-func StartNetworkGame(act <-chan Action, snapshot chan<- GameSnapshot,  peer MoveTransport) {
+func StartNetworkGame(act <-chan Action, snapshot chan<- GameSnapshot, peer MoveTransport, localPlayer Player) {
 	game := NewGame()
 	snapshot <- game.Snapshot()
 
@@ -66,6 +65,12 @@ func StartNetworkGame(act <-chan Action, snapshot chan<- GameSnapshot,  peer Mov
 			if !ok {
 				return
 			}
+
+			if game.p != localPlayer {
+				snapshot <- game.Snapshot()
+				continue
+			}
+
 			s := game.apply(action)
 			snapshot <- s
 
@@ -79,6 +84,12 @@ func StartNetworkGame(act <-chan Action, snapshot chan<- GameSnapshot,  peer Mov
 			if !ok {
 				return
 			}
+
+			if game.p != localPlayer {
+				snapshot <- game.Snapshot()
+				continue
+			}
+
 			s := game.applyTrustedMove(move)
 			snapshot <- s
 		}

@@ -231,12 +231,20 @@ const rtcConfig = {
 };
 
 const pc = new RTCPeerConnection(rtcConfig);
-const signalingUrl = "wss://signaling-7544.onrender.com/";
+
+const isLocalhost = Boolean(
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1' ||
+  window.location.hostname === '[::1]'
+);
+
+const signalingUrl = isLocalhost ? "ws://localhost:8000" : "wss://signaling-7544.onrender.com/";
 
 const socket = new WebSocket(signalingUrl);
 let currentRoomCode = null;
 let dataChannel = null;
 let gameStarted = false;
+let isHost = false;
 
 
 socket.onopen = () => {
@@ -276,6 +284,7 @@ socket.onmessage = (event) => {
 };
 
 function handleRoomCode(message) {
+  isHost = true;
   currentRoomCode = message.roomCode;
   const displayEl = document.getElementById("room-code-display");
   if (displayEl) {
@@ -367,9 +376,12 @@ async function startGameOnce() {
   gameStarted = true;
   snapshot = null;
 
+  console.log("Starting network game. Is host:", isHost);
+
   controller = StartNetworkGame(
     { send: (jsonStr) => dataChannel.send(jsonStr) },
-    onSnapshot
+    onSnapshot,
+    isHost
   );
   showScreen("screen-game");
 }

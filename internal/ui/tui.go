@@ -185,7 +185,7 @@ func (m Model) startNetworkGame(conn net.Conn, localPlayer engine.Player) (Model
 	move := make(chan engine.Action, 10)
 	snapshot := make(chan engine.GameSnapshot, 10)
 
-	go engine.StartNetworkGame(move, snapshot, engine.NewPeer(conn))
+	go engine.StartNetworkGame(move, snapshot, engine.NewPeer(conn), localPlayer)
 
 	m.screen = ScreenPlaying
 	m.move, m.snapshot = move, snapshot
