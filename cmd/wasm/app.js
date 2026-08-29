@@ -50,6 +50,11 @@ function onCellClick(row, col) {
   if (!snapshot || snapshot.isOver) return;
 
   if (snapshot.source) {
+    if (snapshot.source.row === row && snapshot.source.col === col) {
+      sendAction({ actionType: ActionType.Cancel, move: { source: { row: 0, col: 0 }, destination: { row: 0, col: 0 } } });
+      return;
+    }
+
     sendAction({
       actionType: ActionType.Execute,
       move: {
@@ -72,6 +77,12 @@ function onCellClick(row, col) {
 function onHandSlotClick(player, idx, piece) {
   if (!snapshot || snapshot.isOver) return;
   if (player !== snapshot.currentPlayer) return;
+
+  if (snapshot.source && snapshot.source.col === -1 && snapshot.source.row === idx) {
+    sendAction({ actionType: ActionType.Cancel, move: { source: { row: 0, col: 0 }, destination: { row: 0, col: 0 } } });
+    return;
+  }
+
   if (!piece) return;
 
   sendAction({
