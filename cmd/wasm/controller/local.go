@@ -53,12 +53,18 @@ func StartGame(this js.Value, args []js.Value) interface{} {
 func StartNetworkGame(this js.Value, args []js.Value) interface{} {
 	peerSend := args[0].Get("send")
 	onSnapshot := args[1]
+	isHost := args[2]
+
+	localPlayer := engine.White
+	if !isHost.Bool() {
+		localPlayer = engine.Black
+	}
 
 	actChan := make(chan engine.Action, 100)
 	snapChan := make(chan engine.GameSnapshot, 100)
 
 	peer := engine.NewJSPeer(peerSend)
-	go engine.StartNetworkGame(actChan, snapChan, peer)
+	go engine.StartNetworkGame(actChan, snapChan, peer, localPlayer)
 
 	go func() {
 		for snap := range snapChan {
