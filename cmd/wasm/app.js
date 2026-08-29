@@ -51,7 +51,10 @@ function onCellClick(row, col) {
 
   if (snapshot.source) {
     if (snapshot.source.row === row && snapshot.source.col === col) {
-      sendAction({ actionType: ActionType.Cancel, move: { source: { row: 0, col: 0 }, destination: { row: 0, col: 0 } } });
+      sendAction({
+        actionType: ActionType.Cancel,
+        move: { source: { row: 0, col: 0 }, destination: { row: 0, col: 0 } },
+      });
       return;
     }
 
@@ -79,7 +82,10 @@ function onHandSlotClick(player, idx, piece) {
   if (player !== snapshot.currentPlayer) return;
 
   if (snapshot.source && snapshot.source.col === -1 && snapshot.source.row === idx) {
-    sendAction({ actionType: ActionType.Cancel, move: { source: { row: 0, col: 0 }, destination: { row: 0, col: 0 } } });
+    sendAction({
+      actionType: ActionType.Cancel,
+      move: { source: { row: 0, col: 0 }, destination: { row: 0, col: 0 } },
+    });
     return;
   }
 
@@ -181,14 +187,18 @@ function render() {
 
 function onSnapshot(jsonStr) {
   snapshot = JSON.parse(jsonStr);
-  console.log("Received snapshot: ", jsonStr);
-  console.log("Snapshot: ", snapshot);
   render();
 }
 
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach((el) => el.classList.add("hidden"));
   document.getElementById(id).classList.remove("hidden");
+}
+
+function setLoading(text) {
+  const el = document.getElementById("loading-text");
+  if (el) el.textContent = text;
+  showScreen("screen-loading");
 }
 
 async function ensureWasmLoaded() {
@@ -211,14 +221,14 @@ async function beginGame(mode) {
 }
 
 document.querySelectorAll("#screen-menu [data-mode]").forEach((btn) => {
-  btn.addEventListener("click", () => {
+  btn.addEventListener("click", async () => {
     const mode = btn.dataset.mode;
     if (mode === "local") {
       beginGame("local");
     } else if (mode === "bot") {
       showScreen("screen-side");
     } else if (mode === "network") {
-      showScreen("screen-network");
+      await enterNetworkMode();
     }
   });
 });
@@ -237,62 +247,133 @@ document.getElementById("network-back").addEventListener("click", () => {
   showScreen("screen-menu");
 });
 
-const rtcConfig = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
-
-const pc = new RTCPeerConnection(rtcConfig);
 
 const isLocalhost = Boolean(
-  window.location.hostname === 'localhost' ||
-  window.location.hostname === '127.0.0.1' ||
-  window.location.hostname === '[::1]'
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1" ||
+  window.location.hostname === "[::1]"
 );
 
-const signalingUrl = isLocalhost ? "ws://localhost:8000" : "wss://signaling-7544.onrender.com/";
+const signalingWsUrl = isLocalhost ? "ws://localhost:8000" : "wss://signaling-7544.onrender.com";
+const signalingHttpUrl = isLocalhost ? "http://localhost:8000" : "https://signaling-7544.onrender.com";
 
-const socket = new WebSocket(signalingUrl);
+let pc = null;
+let socket = null;
 let currentRoomCode = null;
 let dataChannel = null;
 let gameStarted = false;
 let isHost = false;
+let networkReady = false;
 
-
-socket.onopen = () => {
-  console.log("WebSocket connection established.");
-};
-
-socket.onerror = (error) => {
-  console.error("WebSocket error observed:", error);
-};
-
-socket.onmessage = (event) => {
-  const message = JSON.parse(event.data);
-
-  switch (message.type) {
-    case "room-code":
-      handleRoomCode(message);
-      break;
-    case "wait":
-      showScreen("screen-peer-wait");
-      break;
-    case "peer-joined":
-      handlePeerJoined();
-      break;
-    case "error":
-      handleSignalError(message);
-      break;
-    case "offer":
-      handleOffer(message);
-      break;
-    case "answer":
-      pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: message.sdp }));
-      break;
-    case "ice-candidate":
-      pc.addIceCandidate(new RTCIceCandidate(message.candidate));
-      break;
+async function enterNetworkMode() {
+  if (networkReady) {
+    showScreen("screen-network");
+    return;
   }
-};
+
+  setLoading("Fetching connection info...");
+  const rtcConfig = await getRtcConfig();
+
+  setLoading("Connecting to server...");
+  await connectSignalingSocket();
+
+  initPeerConnection(rtcConfig);
+
+  networkReady = true;
+  showScreen("screen-network");
+}
+
+async function getRtcConfig() {
+  try {
+    const res = await fetch(signalingHttpUrl + "/turn-credentials");
+    const turn = await res.json();
+
+    return {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: turn.urls, username: turn.username, credential: turn.credential },
+      ],
+    };
+  } catch (e) {
+    console.error("Failed to fetch TURN credentials, falling back to STUN only:", e);
+    return { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+  }
+}
+
+function connectSignalingSocket() {
+  return new Promise((resolve, reject) => {
+    socket = new WebSocket(signalingWsUrl);
+
+    socket.onopen = () => {
+      console.log("WebSocket connection established.");
+      resolve();
+    };
+
+    socket.onerror = (error) => {
+      console.error("WebSocket error observed:", error);
+      reject(error);
+    };
+
+    socket.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+
+      switch (message.type) {
+        case "room-code":
+          handleRoomCode(message);
+          break;
+        case "wait":
+          showScreen("screen-peer-wait");
+          break;
+        case "peer-joined":
+          handlePeerJoined();
+          break;
+        case "error":
+          handleSignalError(message);
+          break;
+        case "offer":
+          handleOffer(message);
+          break;
+        case "answer":
+          pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: message.sdp }));
+          break;
+        case "ice-candidate":
+          pc.addIceCandidate(new RTCIceCandidate(message.candidate));
+          break;
+      }
+    };
+  });
+}
+
+function initPeerConnection(rtcConfig) {
+  pc = new RTCPeerConnection(rtcConfig);
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate && currentRoomCode) {
+      socket.send(JSON.stringify({
+        type: "ice-candidate",
+        roomCode: currentRoomCode,
+        candidate: {
+          candidate: event.candidate.candidate,
+          sdpMid: event.candidate.sdpMid,
+          sdpMLineIndex: event.candidate.sdpMLineIndex,
+          usernameFragment: event.candidate.usernameFragment,
+        },
+      }));
+    }
+  };
+
+  pc.ondatachannel = (event) => {
+    setupDataChannel(event.channel);
+  };
+
+  pc.onconnectionstatechange = () => {
+    console.log("WebRTC connection state:", pc.connectionState);
+    if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+      gameStarted = false;
+      showScreen("screen-network");
+    }
+  };
+}
 
 function handleRoomCode(message) {
   isHost = true;
@@ -331,34 +412,6 @@ async function handleOffer(message) {
   }));
 }
 
-
-pc.onicecandidate = (event) => {
-  if (event.candidate && currentRoomCode) {
-    socket.send(JSON.stringify({
-      type: "ice-candidate",
-      roomCode: currentRoomCode,
-      candidate: {
-        candidate: event.candidate.candidate,
-        sdpMid: event.candidate.sdpMid,
-        sdpMLineIndex: event.candidate.sdpMLineIndex,
-        usernameFragment: event.candidate.usernameFragment,
-      },
-    }));
-  }
-};
-
-pc.ondatachannel = (event) => {
-  setupDataChannel(event.channel);
-};
-
-pc.onconnectionstatechange = () => {
-  console.log("WebRTC connection state:", pc.connectionState);
-  if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
-    gameStarted = false;
-    showScreen("screen-network");
-  }
-};
-
 function setupDataChannel(channel) {
   dataChannel = channel;
 
@@ -387,8 +440,6 @@ async function startGameOnce() {
   gameStarted = true;
   snapshot = null;
 
-  console.log("Starting network game. Is host:", isHost);
-
   controller = StartNetworkGame(
     { send: (jsonStr) => dataChannel.send(jsonStr) },
     onSnapshot,
@@ -411,17 +462,12 @@ async function startWebRTCConnection() {
   }));
 }
 
-
 function getRoomCode() {
   socket.send(JSON.stringify({ type: "create-room" }));
 }
 
 document.getElementById("network-create").addEventListener("click", () => {
-  if (socket.readyState === WebSocket.OPEN) {
-    getRoomCode();
-  } else {
-    socket.addEventListener("open", getRoomCode, { once: true });
-  }
+  getRoomCode();
 });
 
 document.getElementById("network-join").addEventListener("click", () => {
